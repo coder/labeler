@@ -1,9 +1,12 @@
 package labeler
 
 import (
+	"encoding/json"
 	"strings"
 
+	"github.com/coder/labeler/httpjson"
 	"github.com/google/go-github/v59/github"
+	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
 	"github.com/sashabaranov/go-openai/jsonschema"
 )
@@ -23,6 +26,22 @@ func (c *context) labelNames() []string {
 	return labels
 }
 
+func issueToText(issue *github.Issue) string {
+	var sb strings.Builder
+	sb.WriteString("title: " + issue.GetTitle())
+	sb.WriteString("\n")
+	sb.WriteString(issue.GetBody())
+	return sb.String()
+}
+
+func mustJSON(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
 // Request generates the messages to be used in the GPT-4 context.
 func (c *context) Request() openai.ChatCompletionRequest {
 	var labelsDescription strings.Builder
@@ -33,19 +52,25 @@ func (c *context) Request() openai.ChatCompletionRequest {
 		labelsDescription.WriteString("\n")
 	}
 
+	const labelFuncName = "setLabels"
 	request := openai.ChatCompletionRequest{
 		Model: openai.GPT4TurboPreview,
 		Tools: []openai.Tool{
 			{
 				Type: openai.ToolTypeFunction,
 				Function: &openai.FunctionDefinition{
-					Name:        "label",
+					Name:        labelFuncName,
 					Description: `Label the GitHub issue with the given labels.`,
 					Parameters: jsonschema.Definition{
-						Description: "The labels to apply to the issue.\n" + labelsDescription.String(),
-						Type:        jsonschema.Array,
-						Items:       &jsonschema.Definition{Type: jsonschema.String},
-						Enum:        c.labelNames(),
+						Type: jsonschema.Object,
+						Properties: map[string]jsonschema.Definition{
+							"labels": {
+								Type:        jsonschema.Array,
+								Items:       &jsonschema.Definition{Type: jsonschema.String},
+								Enum:        c.labelNames(),
+								Description: "The labels to apply to the issue.\n" + labelsDescription.String(),
+							},
+						},
 					},
 				},
 			},
@@ -58,6 +83,47 @@ func (c *context) Request() openai.ChatCompletionRequest {
 		Content: `You are a bot that helps labels issues on GitHub using the "label"
 		function. Pass zero or more labels to the "label" function to label the
 		issue.`,
+	})
+
+	for _, issue := range c.lastIssues {
+		msgs = append(msgs, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleUser,
+			Content: issueToText(issue),
+		})
+
+		var labelNames []string
+		for _, label := range issue.Labels {
+			labelNames = append(labelNames, label.GetName())
+		}
+
+		tcID := uuid.NewString()
+		msgs = append(msgs, openai.ChatCompletionMessage{
+			Role: openai.ChatMessageRoleAssistant,
+			ToolCalls: []openai.ToolCall{
+				{
+					Type: openai.ToolTypeFunction,
+					ID:   tcID,
+					Function: openai.FunctionCall{
+						Name: labelFuncName,
+						Arguments: mustJSON(httpjson.M{
+							"labels": labelNames,
+						}),
+					},
+				},
+			},
+		})
+
+		msgs = append(msgs, openai.ChatCompletionMessage{
+			Role:       openai.ChatMessageRoleTool,
+			Content:    "OK",
+			ToolCallID: tcID,
+		})
+	}
+
+	// Finally, add target issue.
+	msgs = append(msgs, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: issueToText(c.targetIssue),
 	})
 
 	request.Messages = msgs

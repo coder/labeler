@@ -7,12 +7,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"time"
 
-	"github.com/coder/ai"
-	"github.com/coder/ai/aid"
-	"github.com/coder/ai/aid/auth"
+	"github.com/coder/labeler"
 	"github.com/coder/serpent"
 	"github.com/lmittmann/tint"
 	"github.com/sashabaranov/go-openai"
@@ -39,10 +36,10 @@ func main() {
 		bindAddr   string
 	)
 	cmd := &serpent.Cmd{
-		Use:   "aid",
-		Short: "aid is a long-running service that processes GitHub data",
+		Use:   "labeler",
+		Short: "labeler is the GitHub labeler backend service",
 		Handler: func(inv *serpent.Invocation) error {
-			log.Debug("starting aid")
+			log.Debug("starting labeler")
 			if appPEMFile == "" {
 				return fmt.Errorf("app-pem-file is required")
 			}
@@ -62,15 +59,6 @@ func main() {
 
 			oai := openai.NewClient(openAIKey)
 
-			idx := &aid.Indexer{
-				Log:        log,
-				AppConfig:  appConfig,
-				Redis:      redis,
-				OpenAI:     oai,
-				RepoFilter: regexp.MustCompile(repoFilter),
-				OrgFilter:  regexp.MustCompile(orgFilter),
-			}
-
 			listener, err := net.Listen("tcp", bindAddr)
 			if err != nil {
 				return fmt.Errorf("listen: %w", err)
@@ -82,47 +70,15 @@ func main() {
 				listener.Close()
 			}()
 
-			srv := &aid.APIServer{
-				Authorizer: &auth.GitHub{
-					AppConfig:    appConfig,
-					ClientID:     githubProviderID,
-					ClientSecret: githubProviderSecret,
-					ExternalURL:  externalURL,
-				},
-				WebFrontend: &ai.WebFrontend{
-					ProxyURL: &frontendURL,
-				},
-				Log:    log,
-				OpenAI: oai,
-				Redis:  redis,
+			srv := &labeler.Server{
+				Log:       log,
+				OpenAI:    oai,
+				AppConfig: appConfig,
 			}
 
 			srv.Init()
 
-			go func() {
-				defer cancel()
-
-				err = http.Serve(listener, srv)
-				if err != nil {
-					log.Error("http server", "error", err)
-				}
-			}()
-
-			idxTicker := time.NewTicker(5 * time.Minute)
-			defer idxTicker.Stop()
-			for {
-				err := idx.Run(ctx)
-				if err != nil {
-					log.Error("indexer run", "error", err)
-				}
-
-				select {
-				case <-ctx.Done():
-					return nil
-				case <-idxTicker.C:
-					continue
-				}
-			}
+			return http.Serve(listener, srv)
 		},
 		Options: []serpent.Option{
 			{
@@ -134,7 +90,7 @@ func main() {
 			},
 			{
 				Flag:        "app-id",
-				Default:     "352584",
+				Default:     "843202",
 				Description: "GitHub App ID.",
 				Required:    true,
 				Value:       serpent.StringOf(&appID),
