@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/ammario/prefixsuffix"
 	"github.com/coder/labeler/httpjson"
 	"github.com/google/go-github/v59/github"
 	"github.com/google/uuid"
@@ -30,7 +31,14 @@ func issueToText(issue *github.Issue) string {
 	var sb strings.Builder
 	sb.WriteString("title: " + issue.GetTitle())
 	sb.WriteString("\n")
-	sb.WriteString(issue.GetBody())
+
+	saver := prefixsuffix.Saver{
+		// Max 1000 characters per issue.
+		N: 1000,
+	}
+	saver.Write([]byte(issue.GetBody()))
+	sb.Write(saver.Bytes())
+
 	return sb.String()
 }
 
@@ -80,9 +88,8 @@ func (c *context) Request() openai.ChatCompletionRequest {
 
 	msgs = append(msgs, openai.ChatCompletionMessage{
 		Role: "system",
-		Content: `You are a bot that helps labels issues on GitHub using the "label"
-		function. Pass zero or more labels to the "label" function to label the
-		issue.`,
+		Content: `You are a bot that helps labels issues on GitHub using the "setLabel"
+		function.`,
 	})
 
 	for _, issue := range c.lastIssues {

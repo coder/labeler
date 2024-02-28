@@ -8,6 +8,8 @@ require (
 	github.com/lmittmann/tint v1.0.4
 )
 
+require github.com/ammario/prefixsuffix v0.0.0-20200405191514-5a0456bf2cfd
+
 require (
 	cdr.dev/slog v1.6.2-0.20240126064726-20367d4aede6 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
