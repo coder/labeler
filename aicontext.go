@@ -34,7 +34,7 @@ func issueToText(issue *github.Issue) string {
 
 	saver := prefixsuffix.Saver{
 		// Max 1000 characters per issue.
-		N: 1000,
+		N: 500,
 	}
 	saver.Write([]byte(issue.GetBody()))
 	sb.Write(saver.Bytes())

@@ -12,6 +12,7 @@ import (
 	"github.com/beatlabs/github-auth/app"
 	"github.com/coder/labeler/httpjson"
 	"github.com/go-chi/chi/v5"
+	githook "github.com/go-playground/webhooks/v6/github"
 	"github.com/google/go-github/v59/github"
 	"github.com/sashabaranov/go-openai"
 )
@@ -27,6 +28,7 @@ type Server struct {
 func (s *Server) Init() {
 	s.router = chi.NewRouter()
 	s.router.Mount("/infer", httpjson.Handler(s.infer))
+	s.router.Mount("/webhook", httpjson.Handler(s.webhook))
 }
 
 func filterIssues(slice []*github.Issue, f func(*github.Issue) bool) []*github.Issue {
@@ -172,6 +174,75 @@ func (s *Server) infer(w http.ResponseWriter, r *http.Request) *httpjson.Respons
 	return &httpjson.Response{
 		Status: http.StatusOK,
 		Body:   resp,
+	}
+}
+
+func (s *Server) serverError(msg error) *httpjson.Response {
+	s.Log.Error("server error", "error", msg)
+	return &httpjson.Response{
+		Status: http.StatusInternalServerError,
+		Body:   httpjson.M{"error": msg.Error()},
+	}
+}
+
+func (s *Server) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Response {
+	hook, err := githook.New()
+	if err != nil {
+		return s.serverError(err)
+	}
+
+	payloadAny, err := hook.Parse(
+		r, githook.IssuesEvent,
+	)
+	if err != nil {
+		return s.serverError(err)
+	}
+
+	payload, ok := payloadAny.(githook.IssuesPayload)
+	if !ok {
+		return s.serverError(fmt.Errorf("expected issues payload: %T", payloadAny))
+	}
+
+	if payload.Action != "opened" {
+		return &httpjson.Response{
+			Status: http.StatusOK,
+			Body:   httpjson.M{"message": "not an opened issue"},
+		}
+	}
+
+	repo := payload.Repository
+
+	resp, err := s.runInfer(r.Context(), &inferRequest{
+		InstallID: strconv.FormatInt(payload.Installation.ID, 10),
+		User:      repo.Owner.Login,
+		Repo:      repo.Name,
+		Issue:     int(payload.Issue.Number),
+	})
+	if err != nil {
+		return s.serverError(err)
+	}
+
+	// Set the labels.
+	instConfig, err := s.AppConfig.InstallationConfig(strconv.FormatInt(payload.Installation.ID, 10))
+	if err != nil {
+		return s.serverError(err)
+	}
+
+	githubClient := github.NewClient(instConfig.Client(r.Context()))
+	_, _, err = githubClient.Issues.AddLabelsToIssue(
+		r.Context(),
+		repo.Owner.Login,
+		repo.Name,
+		int(payload.Issue.Number),
+		resp.SetLabels,
+	)
+	if err != nil {
+		return s.serverError(err)
+	}
+
+	return &httpjson.Response{
+		Status: http.StatusOK,
+		Body:   httpjson.M{"message": "labels set"},
 	}
 }
 

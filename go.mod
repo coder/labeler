@@ -45,6 +45,7 @@ require (
 require (
 	github.com/beatlabs/github-auth v0.0.0-20240224180412-b8b13544edcc
 	github.com/go-chi/chi/v5 v5.0.12
+	github.com/go-playground/webhooks/v6 v6.3.0
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/sashabaranov/go-openai v1.20.2
 )
