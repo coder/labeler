@@ -130,7 +130,7 @@ func (s *Server) runInfer(ctx context.Context, req *inferRequest) (*inferRespons
 	}
 	err = json.Unmarshal([]byte(toolCall.Function.Arguments), &setLabels)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal setLabels: %w", err)
+		return nil, fmt.Errorf("unmarshal setLabels: %w, toolCall: %+v", err, toolCall)
 	}
 
 	return &inferResponse{
@@ -210,7 +210,7 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Respo
 		return s.serverError(fmt.Errorf("expected issues payload: %T", payloadAny))
 	}
 
-	if payload.Action != "opened" {
+	if payload.Action != "opened" && payload.Action != "reopened" {
 		return &httpjson.Response{
 			Status: http.StatusOK,
 			Body:   httpjson.M{"message": "not an opened issue"},
@@ -249,7 +249,7 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Respo
 
 	return &httpjson.Response{
 		Status: http.StatusOK,
-		Body:   httpjson.M{"message": "labels set"},
+		Body:   httpjson.M{"message": "labels set", "labels": resp.SetLabels},
 	}
 }
 
