@@ -1,6 +1,7 @@
 package labeler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -28,7 +29,7 @@ func (s *Server) Init() {
 	s.router.Mount("/infer", httpjson.Handler(s.infer))
 }
 
-func filterSlice(slice []*github.Issue, f func(*github.Issue) bool) []*github.Issue {
+func filterIssues(slice []*github.Issue, f func(*github.Issue) bool) []*github.Issue {
 	var result []*github.Issue
 	for _, item := range slice {
 		if f(item) {
@@ -38,9 +39,101 @@ func filterSlice(slice []*github.Issue, f func(*github.Issue) bool) []*github.Is
 	return result
 }
 
+type inferRequest struct {
+	InstallID string `json:"install_id"`
+	User      string `json:"user"`
+	Repo      string `json:"repo"`
+	Issue     int    `json:"issue"`
+}
 type inferResponse struct {
 	SetLabels  []string `json:"set_labels,omitempty"`
 	TokensUsed int      `json:"tokens_used,omitempty"`
+}
+
+func (s *Server) runInfer(ctx context.Context, req *inferRequest) (*inferResponse, error) {
+	instConfig, err := s.AppConfig.InstallationConfig(req.InstallID)
+	if err != nil {
+		return nil, fmt.Errorf("get installation config: %w", err)
+	}
+
+	githubClient := github.NewClient(instConfig.Client(ctx))
+
+	lastIssues, _, err := githubClient.Issues.ListByRepo(
+		ctx,
+		req.User,
+		req.Repo,
+		&github.IssueListByRepoOptions{
+			State: "all",
+			ListOptions: github.ListOptions{
+				PerPage: 100,
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list issues: %w", err)
+	}
+
+	labels, _, err := githubClient.Issues.ListLabels(ctx, req.User, req.Repo, &github.ListOptions{
+		PerPage: 100,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list labels: %w", err)
+	}
+
+	targetIssue, _, err := githubClient.Issues.Get(ctx, req.User, req.Repo, req.Issue)
+	if err != nil {
+		return nil, fmt.Errorf("get target issue: %w", err)
+	}
+
+	// Take out target issue from the list of issues
+	lastIssues = filterIssues(lastIssues, func(i *github.Issue) bool {
+		return i.GetNumber() != targetIssue.GetNumber()
+	})
+
+	// Sort by created at.
+	sort.Slice(lastIssues, func(i, j int) bool {
+		iTime := lastIssues[i].GetCreatedAt().Time
+		jTime := lastIssues[j].GetCreatedAt().Time
+		return iTime.Before(jTime)
+	})
+
+	aiContext := &aiContext{
+		allLabels:   labels,
+		lastIssues:  lastIssues,
+		targetIssue: targetIssue,
+	}
+
+	resp, err := s.OpenAI.CreateChatCompletion(
+		ctx,
+		aiContext.Request(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create chat completion: %w", err)
+	}
+
+	if len(resp.Choices) != 1 {
+		return nil, fmt.Errorf("expected one choice")
+	}
+
+	choice := resp.Choices[0]
+
+	if len(choice.Message.ToolCalls) != 1 {
+		return nil, fmt.Errorf("expected one tool call")
+	}
+
+	toolCall := choice.Message.ToolCalls[0]
+	var setLabels struct {
+		Labels []string `json:"labels"`
+	}
+	err = json.Unmarshal([]byte(toolCall.Function.Arguments), &setLabels)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal setLabels: %w", err)
+	}
+
+	return &inferResponse{
+		SetLabels:  setLabels.Labels,
+		TokensUsed: resp.Usage.TotalTokens,
+	}, nil
 }
 
 func (s *Server) infer(w http.ResponseWriter, r *http.Request) *httpjson.Response {
@@ -58,123 +151,27 @@ func (s *Server) infer(w http.ResponseWriter, r *http.Request) *httpjson.Respons
 		}
 	}
 
-	instConfig, err := s.AppConfig.InstallationConfig(installID)
-	if err != nil {
-		return httpjson.ErrorMessage(
-			http.StatusInternalServerError,
-			fmt.Errorf("get installation config: %w", err),
-		)
-	}
-
-	githubClient := github.NewClient(instConfig.Client(r.Context()))
-
-	lastIssues, _, err := githubClient.Issues.ListByRepo(
-		r.Context(),
-		user,
-		repo,
-		&github.IssueListByRepoOptions{
-			State: "all",
-			ListOptions: github.ListOptions{
-				PerPage: 100,
-			},
-		},
-	)
-	if err != nil {
-		return &httpjson.Response{
-			Status: http.StatusInternalServerError,
-			Body:   httpjson.M{"error": err.Error()},
-		}
-	}
-
-	labels, _, err := githubClient.Issues.ListLabels(r.Context(), user, repo, &github.ListOptions{
-		PerPage: 100,
-	})
-	if err != nil {
-		return &httpjson.Response{
-			Status: http.StatusInternalServerError,
-			Body:   httpjson.M{"error": err.Error()},
-		}
-	}
-
 	issueNum, err := strconv.Atoi(issue)
 	if err != nil {
 		return &httpjson.Response{
 			Status: http.StatusBadRequest,
-			Body:   httpjson.M{"error": "invalid issue number"},
+			Body:   httpjson.M{"error": "issue must be a number"},
 		}
 	}
 
-	targetIssue, _, err := githubClient.Issues.Get(r.Context(), user, repo, issueNum)
-	if err != nil {
-		return httpjson.ErrorMessage(
-			http.StatusInternalServerError,
-			fmt.Errorf("get target issue: %w", err),
-		)
-	}
-
-	// Take out target issue from the list of issues
-	lastIssues = filterSlice(lastIssues, func(i *github.Issue) bool {
-		return i.GetNumber() != targetIssue.GetNumber()
+	resp, err := s.runInfer(r.Context(), &inferRequest{
+		InstallID: installID,
+		User:      user,
+		Repo:      repo,
+		Issue:     issueNum,
 	})
-
-	// Sort by created at.
-	sort.Slice(lastIssues, func(i, j int) bool {
-		iTime := lastIssues[i].GetCreatedAt().Time
-		jTime := lastIssues[j].GetCreatedAt().Time
-		return iTime.Before(jTime)
-	})
-
-	aiContext := &context{
-		allLabels:   labels,
-		lastIssues:  lastIssues,
-		targetIssue: targetIssue,
-	}
-
-	resp, err := s.OpenAI.CreateChatCompletion(
-		r.Context(),
-		aiContext.Request(),
-	)
 	if err != nil {
-		return httpjson.ErrorMessage(
-			http.StatusInternalServerError,
-			fmt.Errorf("create chat completion: %w", err),
-		)
-	}
-
-	if len(resp.Choices) != 1 {
-		return &httpjson.Response{
-			Status: http.StatusInternalServerError,
-			Body:   httpjson.M{"error": "expected one choice"},
-		}
-	}
-
-	choice := resp.Choices[0]
-
-	if len(choice.Message.ToolCalls) != 1 {
-		return &httpjson.Response{
-			Status: http.StatusInternalServerError,
-			Body:   httpjson.M{"error": "expected one tool call"},
-		}
-	}
-
-	toolCall := choice.Message.ToolCalls[0]
-	var setLabels struct {
-		Labels []string `json:"labels"`
-	}
-	err = json.Unmarshal([]byte(toolCall.Function.Arguments), &setLabels)
-	if err != nil {
-		return httpjson.ErrorMessage(
-			http.StatusInternalServerError,
-			fmt.Errorf("unmarshal setLabels: %w", err),
-		)
+		return httpjson.ErrorMessage(http.StatusInternalServerError, err)
 	}
 
 	return &httpjson.Response{
 		Status: http.StatusOK,
-		Body: inferResponse{
-			SetLabels:  setLabels.Labels,
-			TokensUsed: resp.Usage.TotalTokens,
-		},
+		Body:   resp,
 	}
 }
 

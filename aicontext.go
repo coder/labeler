@@ -12,14 +12,14 @@ import (
 	"github.com/sashabaranov/go-openai/jsonschema"
 )
 
-// context contains and generates the GPT-4 context used for label generation.
-type context struct {
+// aiContext contains and generates the GPT-4 aiContext used for label generation.
+type aiContext struct {
 	allLabels   []*github.Label
 	lastIssues  []*github.Issue
 	targetIssue *github.Issue
 }
 
-func (c *context) labelNames() []string {
+func (c *aiContext) labelNames() []string {
 	var labels []string
 	for _, label := range c.allLabels {
 		labels = append(labels, label.GetName())
@@ -51,7 +51,7 @@ func mustJSON(v interface{}) string {
 }
 
 // Request generates the messages to be used in the GPT-4 context.
-func (c *context) Request() openai.ChatCompletionRequest {
+func (c *aiContext) Request() openai.ChatCompletionRequest {
 	var labelsDescription strings.Builder
 	for _, label := range c.allLabels {
 		labelsDescription.WriteString(label.GetName())
