@@ -3,6 +3,7 @@ package labeler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -188,6 +189,12 @@ func (s *Server) serverError(msg error) *httpjson.Response {
 func (s *Server) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Response {
 	hook, err := githook.New()
 	if err != nil {
+		if errors.Is(err, githook.ErrEventNotSpecifiedToParse) {
+			return &httpjson.Response{
+				Status: http.StatusOK,
+				Body:   httpjson.M{"msg": "ignoring event: not specified to parse"},
+			}
+		}
 		return s.serverError(err)
 	}
 

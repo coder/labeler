@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/coder/labeler"
@@ -31,6 +33,7 @@ func main() {
 	log := newLogger()
 	var (
 		appPEMFile string
+		appPEMEnv  string
 		appID      string
 		openAIKey  string
 		bindAddr   string
@@ -44,9 +47,20 @@ func main() {
 				return fmt.Errorf("app-pem-file is required")
 			}
 
-			appKey, err := appkey.FromFile(appPEMFile)
-			if err != nil {
-				return fmt.Errorf("load app key: %w", err)
+			var (
+				err    error
+				appKey *rsa.PrivateKey
+			)
+			if appPEMEnv != "" {
+				appKey, err = appkey.Parse([]byte(appPEMEnv))
+				if err != nil {
+					return fmt.Errorf("parse app key: %w", err)
+				}
+			} else {
+				appKey, err = appkey.FromFile(appPEMFile)
+				if err != nil {
+					return fmt.Errorf("load app key: %w", err)
+				}
 			}
 
 			appConfig, err := app.NewConfig(appID, appKey)
@@ -57,7 +71,21 @@ func main() {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
+			openAIKey = strings.TrimSpace(openAIKey)
+
 			oai := openai.NewClient(openAIKey)
+
+			// Validate the OpenAI API key.
+			_, err = oai.ListModels(ctx)
+			if err != nil {
+				return fmt.Errorf("list models: %w", err)
+			}
+
+			// support Cloud Run
+			port := os.Getenv("PORT")
+			if port != "" {
+				bindAddr = ":" + port
+			}
 
 			listener, err := net.Listen("tcp", bindAddr)
 			if err != nil {
@@ -106,7 +134,13 @@ func main() {
 			{
 				Description: "OpenAI API key.",
 				Env:         "OPENAI_API_KEY",
+				Required:    true,
 				Value:       serpent.StringOf(&openAIKey),
+			},
+			{
+				Env:         "GITHUB_APP_PEM",
+				Description: "APP PEM in raw form.",
+				Value:       serpent.StringOf(&appPEMEnv),
 			},
 		},
 	}
