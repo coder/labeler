@@ -17,9 +17,7 @@ accuracy of @cdr-bot on coder/coder and the fact that the completion approach le
 the need for a DB.
 
 On the other hand, completions are an order of magnitude more expensive, so
-costs may approach ~10c per opened issue. If the project gets enough traction
-to where that becomes an issue, we will switch to an
-embedding system or GPT3.5.
+costs may approach ~10c per opened issue. If the project reaches a scale where that becomes an issue, we can switch to an embedding system, GPT-3.5, or accept an OpenAI key.
 
 ### Context construction
 
