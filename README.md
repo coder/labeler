@@ -4,6 +4,8 @@
 based on your past labelling decisions. You can install it on your repo
 [**here**](https://github.com/apps/coder-labeler).
 
+![img](./img/example-label.png)
+
 We currently use it on [`coder/coder`](https://github.com/coder/coder) and
 [`coder/code-server`](https://github.com/coder/code-server).
 
