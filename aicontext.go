@@ -2,6 +2,7 @@ package labeler
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/ammario/prefixsuffix"
@@ -29,6 +30,7 @@ func (c *aiContext) labelNames() []string {
 
 func issueToText(issue *github.Issue) string {
 	var sb strings.Builder
+	fmt.Fprintf(&sb, "author: %s (%s)\n", issue.GetUser().GetLogin(), issue.GetAuthorAssociation())
 	sb.WriteString("title: " + issue.GetTitle())
 	sb.WriteString("\n")
 
@@ -89,7 +91,7 @@ func (c *aiContext) Request() openai.ChatCompletionRequest {
 	msgs = append(msgs, openai.ChatCompletionMessage{
 		Role: "system",
 		Content: `You are a bot that helps labels issues on GitHub using the "setLabel"
-		function.`,
+		function. Avoid applying labels to issues that are meant for Pull Requests only.`,
 	})
 
 	for _, issue := range c.lastIssues {
