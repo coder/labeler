@@ -1,38 +1,24 @@
 # labeler
 
-`labeler` is a public GitHub app inspired by @cdr-bot that automatically 
-labels issues and pull requests based on how recent issues and pull requests were
-labeled.
+`labeler` is a GitHub app that automatically labels newly created issues for you
+based on your past labelling decisions. You can install it on your repo
+[**here**](https://github.com/apps/coder-labeler).
 
-It is free and available for all open source projects. If it gains traction,
-we may open it up to private repositories as well, perhaps for a fee.
+We currently use it on [`coder/coder`](https://github.com/coder/coder) and
+[`coder/code-server`](https://github.com/coder/code-server).
 
-# Business Goals
-
-The primary goal of `coder-labeler` is promotion of the Coder brand. Hopefully
-we can attract major open source repositories to use it, and then their users
-will see "@coder-labeler labeled this issue a X" across many trackers.
-
-# Product Goals
-
-* Enforce consistent use of labels in issue tracker so searching by labels is
-  more useful
-* Reduce toil of manual labelling in common cases
-
-# Architecture
-
-Initially, the labeler will use no persistent storage and will be essentially
-stateless. My hope is that such an architecture will reduce maintenance burden
-in the case that a few open source repos pick it up but we don't want to allocate
-resources to it.
-
-## Completion vs. Embedding
+## Architecture
 
 The labeler uses a GPT-4 completion with the past 100 opened issues instead of
 a more complex vector DB / embedding system. This is because of the proven
-accuracy of cdr-bot and the fact that the completion approach lets us remove
+accuracy of @cdr-bot on coder/coder and the fact that the completion approach lets us remove
 the need for a DB.
 
-On the other side, completions are an order of magnitude more expensive, so
+On the other hand, completions are an order of magnitude more expensive, so
 costs may approach ~10c per opened issue. If the project gets enough traction
-to where that becomes an issue, we can change the model.
+to where that becomes an issue, we will switch to an
+embedding system or GPT3.5.
+
+### Context construction
+
+See [aicontext.go](./aicontext.go) for the code that constructs the GPT context.
