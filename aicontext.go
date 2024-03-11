@@ -72,6 +72,8 @@ func countTokens(msgs ...openai.ChatCompletionMessage) int {
 	return tokens
 }
 
+const magicDisableString = "Only humans may set this"
+
 // Request generates the messages to be used in the GPT-4 context.
 func (c *aiContext) Request(
 	model string,
@@ -87,6 +89,8 @@ func (c *aiContext) Request(
 	const labelFuncName = "setLabels"
 	request := openai.ChatCompletionRequest{
 		Model: model,
+		// Want high determinism.
+		Temperature: 0,
 		Tools: []openai.Tool{
 			{
 				Type: openai.ToolTypeFunction,
@@ -97,10 +101,9 @@ func (c *aiContext) Request(
 						Type: jsonschema.Object,
 						Properties: map[string]jsonschema.Definition{
 							"labels": {
-								Type:        jsonschema.Array,
-								Items:       &jsonschema.Definition{Type: jsonschema.String},
-								Enum:        c.labelNames(),
-								Description: "The labels to apply to the issue.\n" + labelsDescription.String(),
+								Type:  jsonschema.Array,
+								Items: &jsonschema.Definition{Type: jsonschema.String},
+								Enum:  c.labelNames(),
 							},
 						},
 					},
@@ -116,7 +119,8 @@ constructMsgs:
 		Role: "system",
 		Content: `You are a bot that helps labels issues on GitHub using the "setLabel"
 		function. Avoid applying labels to issues that are meant for Pull Requests only. Avoid applying labels when
-		the label description says something like "Only humans may set this".`,
+		the label description says something like "` + magicDisableString + `". The labels available are:
+		` + labelsDescription.String(),
 	})
 
 	for _, issue := range c.lastIssues {

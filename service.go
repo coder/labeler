@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ammario/tlru"
@@ -119,10 +120,15 @@ func (s *Service) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 		user:    req.User,
 		repo:    req.Repo,
 	}, func() ([]*github.Label, error) {
-		labels, _, err := githubClient.Issues.ListLabels(ctx, req.User, req.Repo, &github.ListOptions{
-			PerPage: 100,
-		})
-		return labels, err
+		return ghapi.Page(
+			ctx,
+			githubClient,
+			func(ctx context.Context, opt *github.ListOptions) ([]*github.Label, *github.Response, error) {
+				return githubClient.Issues.ListLabels(ctx, req.User, req.Repo, opt)
+			},
+			// We use the coder/customers label count as a reasonable maximum.
+			300,
+		)
 	}, time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("list labels: %w", err)
@@ -198,8 +204,24 @@ retryAI:
 		}
 	}
 
+	disabledLabels := make(map[string]struct{})
+	for _, label := range labels {
+		if strings.Contains(label.GetDescription(), magicDisableString) {
+			disabledLabels[label.GetName()] = struct{}{}
+		}
+	}
+
+	// Remove any labels that are disabled.
+	var newLabels []string
+	for _, label := range setLabels.Labels {
+		if _, ok := disabledLabels[label]; ok {
+			continue
+		}
+		newLabels = append(newLabels, label)
+	}
+
 	return &InferResponse{
-		SetLabels:  setLabels.Labels,
+		SetLabels:  newLabels,
 		TokensUsed: resp.Usage.TotalTokens,
 	}, nil
 }

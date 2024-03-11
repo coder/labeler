@@ -11,9 +11,11 @@ We currently use it on [`coder/coder`](https://github.com/coder/coder) and
 
 ## Configuration
 
-The labeler is configured by your label descriptions. For example, prevent the labeler from adding a `roadmap` label
-by adding "Only humans may set this label" to the your `roadmap` label description. In this way, the labeler
+The labeler is generally configured by your label descriptions. In this way, the labeler
 interprets your label system in the same way a human would.
+
+For the time being, the magic string `Only humans may set this` will forcefully prevent
+the labeler from adding a label, although a synonym may work as well.
 
 ## Architecture
 

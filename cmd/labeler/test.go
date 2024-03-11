@@ -99,13 +99,13 @@ func (s *testStats) print(w io.Writer) error {
 
 	fmt.Fprintf(twr, "Total issues:\t%d\n", s.nIssues)
 	fmt.Fprintf(twr, "False adds:\t%d\t%.2f%%\n", len(s.falseAdds), float64(len(s.falseAdds))/float64(s.nIssues)*100)
-	fmt.Fprintf(twr, "Top false adds:\t%v\n", topN(uniqCount(s.falseAdds), 5))
+	fmt.Fprintf(twr, "Top false adds:\t%v\n", topN(uniqCount(s.falseAdds), 20))
 
 	fmt.Fprintf(twr, "False removes:\t%d\t%.2f%%\n", len(s.falseRms), float64(len(s.falseRms))/float64(s.nIssues)*100)
-	fmt.Fprintf(twr, "Top false removes:\t%v\n", topN(uniqCount(s.falseRms), 5))
+	fmt.Fprintf(twr, "Top false removes:\t%v\n", topN(uniqCount(s.falseRms), 20))
 
 	fmt.Fprintf(twr, "Hits:\t%d\t%.2f%%\n", len(s.hits), float64(len(s.hits))/float64(s.nIssues)*100)
-	fmt.Fprintf(twr, "Top hit labels:\t%v\n", topN(uniqCount(s.hits), 5))
+	fmt.Fprintf(twr, "Top hit labels:\t%v\n", topN(uniqCount(s.hits), 20))
 
 	fmt.Fprintf(twr, "Tokens used:\t%d\n", s.tokens)
 	return twr.Flush()
