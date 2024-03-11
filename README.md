@@ -17,6 +17,19 @@ interprets your label system in the same way a human would.
 
 ## Architecture
 
+```mermaid
+sequenceDiagram
+    participant GitHub
+    participant Labeler as @coder-labeler 
+    participant AI as OpenAI
+    GitHub->>Labeler: [Create|Reopen] Issue event
+    note over Labeler: Load repo data, all labeling is stateless
+    Labeler->GitHub: Get all repo issue labels
+    Labeler->GitHub: Get last 100 repo issues
+    Labeler->AI: Generate setLabels
+    Labeler ->> GitHub: Add labels to issue
+```
+
 The labeler uses a GPT-4 completion with the past 100 opened issues instead of
 a more complex vector DB / embedding system. This is because of the proven
 accuracy of @cdr-bot on coder/coder and the fact that the completion approach lets us remove
