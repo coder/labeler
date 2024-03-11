@@ -11,6 +11,12 @@ require (
 require github.com/ammario/prefixsuffix v0.0.0-20200405191514-5a0456bf2cfd
 
 require (
+	github.com/ammario/tlru v0.4.0 // indirect
+	github.com/armon/go-radix v1.0.0 // indirect
+	github.com/dlclark/regexp2 v1.10.0 // indirect
+)
+
+require (
 	cdr.dev/slog v1.6.2-0.20240126064726-20367d4aede6 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/coder/coder/v2 v2.8.3 // indirect
@@ -44,8 +50,10 @@ require (
 
 require (
 	github.com/beatlabs/github-auth v0.0.0-20240224180412-b8b13544edcc
+	github.com/coder/retry v1.5.1
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/go-playground/webhooks/v6 v6.3.0
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/sashabaranov/go-openai v1.20.2
+	github.com/tiktoken-go/tokenizer v0.1.0
 )

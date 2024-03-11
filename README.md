@@ -26,7 +26,7 @@ sequenceDiagram
     note over Labeler: Load repo data, all labeling is stateless
     Labeler->GitHub: Get all repo issue labels
     Labeler->GitHub: Get last 100 repo issues
-    Labeler->AI: Generate setLabels
+    Labeler->AI: Generate setLabels via GPT completion
     Labeler ->> GitHub: Add labels to issue
 ```
 

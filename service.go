@@ -9,27 +9,45 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 
+	"github.com/ammario/tlru"
 	"github.com/beatlabs/github-auth/app"
 	"github.com/coder/labeler/httpjson"
+	"github.com/coder/retry"
 	"github.com/go-chi/chi/v5"
 	githook "github.com/go-playground/webhooks/v6/github"
 	"github.com/google/go-github/v59/github"
 	"github.com/sashabaranov/go-openai"
 )
 
-type Server struct {
+type repoAddr struct {
+	install, user, repo string
+}
+
+type Service struct {
 	Log       *slog.Logger
 	OpenAI    *openai.Client
 	AppConfig *app.Config
+	Model     string
 
 	router *chi.Mux
+
+	// These caches are primarily useful in the test system, where there are
+	// many inference requests to the same repo in a short period of time.
+	//
+	// That will rarely happen in production.
+	repoLabelsCache *tlru.Cache[repoAddr, []*github.Label]
 }
 
-func (s *Server) Init() {
+func (s *Service) Init() {
 	s.router = chi.NewRouter()
 	s.router.Mount("/infer", httpjson.Handler(s.infer))
 	s.router.Mount("/webhook", httpjson.Handler(s.webhook))
+
+	s.repoLabelsCache = tlru.New[repoAddr](func(ls []*github.Label) int {
+		return len(ls)
+	}, 1024)
 }
 
 func filterIssues(slice []*github.Issue, f func(*github.Issue) bool) []*github.Issue {
@@ -42,18 +60,19 @@ func filterIssues(slice []*github.Issue, f func(*github.Issue) bool) []*github.I
 	return result
 }
 
-type inferRequest struct {
+type InferRequest struct {
 	InstallID string `json:"install_id"`
 	User      string `json:"user"`
 	Repo      string `json:"repo"`
 	Issue     int    `json:"issue"`
 }
-type inferResponse struct {
+
+type InferResponse struct {
 	SetLabels  []string `json:"set_labels,omitempty"`
 	TokensUsed int      `json:"tokens_used,omitempty"`
 }
 
-func (s *Server) runInfer(ctx context.Context, req *inferRequest) (*inferResponse, error) {
+func (s *Service) Infer(ctx context.Context, req *InferRequest) (*InferResponse, error) {
 	instConfig, err := s.AppConfig.InstallationConfig(req.InstallID)
 	if err != nil {
 		return nil, fmt.Errorf("get installation config: %w", err)
@@ -76,9 +95,16 @@ func (s *Server) runInfer(ctx context.Context, req *inferRequest) (*inferRespons
 		return nil, fmt.Errorf("list issues: %w", err)
 	}
 
-	labels, _, err := githubClient.Issues.ListLabels(ctx, req.User, req.Repo, &github.ListOptions{
-		PerPage: 100,
-	})
+	labels, err := s.repoLabelsCache.Do(repoAddr{
+		install: req.InstallID,
+		user:    req.User,
+		repo:    req.Repo,
+	}, func() ([]*github.Label, error) {
+		labels, _, err := githubClient.Issues.ListLabels(ctx, req.User, req.Repo, &github.ListOptions{
+			PerPage: 100,
+		})
+		return labels, err
+	}, time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("list labels: %w", err)
 	}
@@ -106,11 +132,20 @@ func (s *Server) runInfer(ctx context.Context, req *inferRequest) (*inferRespons
 		targetIssue: targetIssue,
 	}
 
+retryAI:
+	ret := retry.New(time.Millisecond*100, time.Second*5)
 	resp, err := s.OpenAI.CreateChatCompletion(
 		ctx,
-		aiContext.Request(),
+		aiContext.Request(s.Model),
 	)
 	if err != nil {
+		var aiErr *openai.APIError
+		if errors.As(err, &aiErr) {
+			if aiErr.HTTPStatusCode >= 500 && ret.Wait(ctx) {
+				s.Log.Warn("retrying AI call", "error", err)
+				goto retryAI
+			}
+		}
 		return nil, fmt.Errorf("create chat completion: %w", err)
 	}
 
@@ -133,13 +168,13 @@ func (s *Server) runInfer(ctx context.Context, req *inferRequest) (*inferRespons
 		return nil, fmt.Errorf("unmarshal setLabels: %w, toolCall: %+v", err, toolCall)
 	}
 
-	return &inferResponse{
+	return &InferResponse{
 		SetLabels:  setLabels.Labels,
 		TokensUsed: resp.Usage.TotalTokens,
 	}, nil
 }
 
-func (s *Server) infer(w http.ResponseWriter, r *http.Request) *httpjson.Response {
+func (s *Service) infer(w http.ResponseWriter, r *http.Request) *httpjson.Response {
 	var (
 		installID = r.URL.Query().Get("install_id")
 		user      = r.URL.Query().Get("user")
@@ -162,7 +197,7 @@ func (s *Server) infer(w http.ResponseWriter, r *http.Request) *httpjson.Respons
 		}
 	}
 
-	resp, err := s.runInfer(r.Context(), &inferRequest{
+	resp, err := s.Infer(r.Context(), &InferRequest{
 		InstallID: installID,
 		User:      user,
 		Repo:      repo,
@@ -178,7 +213,7 @@ func (s *Server) infer(w http.ResponseWriter, r *http.Request) *httpjson.Respons
 	}
 }
 
-func (s *Server) serverError(msg error) *httpjson.Response {
+func (s *Service) serverError(msg error) *httpjson.Response {
 	s.Log.Error("server error", "error", msg)
 	return &httpjson.Response{
 		Status: http.StatusInternalServerError,
@@ -186,7 +221,7 @@ func (s *Server) serverError(msg error) *httpjson.Response {
 	}
 }
 
-func (s *Server) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Response {
+func (s *Service) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Response {
 	hook, err := githook.New()
 	if err != nil {
 		if errors.Is(err, githook.ErrEventNotSpecifiedToParse) {
@@ -219,7 +254,7 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Respo
 
 	repo := payload.Repository
 
-	resp, err := s.runInfer(r.Context(), &inferRequest{
+	resp, err := s.Infer(r.Context(), &InferRequest{
 		InstallID: strconv.FormatInt(payload.Installation.ID, 10),
 		User:      repo.Owner.Login,
 		Repo:      repo.Name,
@@ -253,6 +288,6 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Respo
 	}
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }

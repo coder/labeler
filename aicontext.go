@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
 	"github.com/sashabaranov/go-openai/jsonschema"
+	"github.com/tiktoken-go/tokenizer"
 )
 
 // aiContext contains and generates the GPT-4 aiContext used for label generation.
@@ -52,8 +53,29 @@ func mustJSON(v interface{}) string {
 	return string(b)
 }
 
+func countTokens(msgs ...openai.ChatCompletionMessage) int {
+	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+	if err != nil {
+		panic("oh oh")
+	}
+
+	var tokens int
+	for _, msg := range msgs {
+		ts, _, _ := enc.Encode(msg.Content)
+		tokens += len(ts)
+
+		for _, call := range msg.ToolCalls {
+			ts, _, _ = enc.Encode(call.Function.Arguments)
+			tokens += len(ts)
+		}
+	}
+	return tokens
+}
+
 // Request generates the messages to be used in the GPT-4 context.
-func (c *aiContext) Request() openai.ChatCompletionRequest {
+func (c *aiContext) Request(
+	model string,
+) openai.ChatCompletionRequest {
 	var labelsDescription strings.Builder
 	for _, label := range c.allLabels {
 		labelsDescription.WriteString(label.GetName())
@@ -64,7 +86,7 @@ func (c *aiContext) Request() openai.ChatCompletionRequest {
 
 	const labelFuncName = "setLabels"
 	request := openai.ChatCompletionRequest{
-		Model: openai.GPT4TurboPreview,
+		Model: model,
 		Tools: []openai.Tool{
 			{
 				Type: openai.ToolTypeFunction,
@@ -86,6 +108,8 @@ func (c *aiContext) Request() openai.ChatCompletionRequest {
 			},
 		},
 	}
+
+constructMsgs:
 	var msgs []openai.ChatCompletionMessage
 
 	msgs = append(msgs, openai.ChatCompletionMessage{
@@ -130,11 +154,26 @@ func (c *aiContext) Request() openai.ChatCompletionRequest {
 		})
 	}
 
-	// Finally, add target issue.
-	msgs = append(msgs, openai.ChatCompletionMessage{
+	targetIssueMsg := openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
 		Content: issueToText(c.targetIssue),
-	})
+	}
+
+	// Finally, add target issue.
+	msgs = append(msgs, targetIssueMsg)
+
+	modelTokenLimit := 0
+
+	switch model {
+	case openai.GPT3Dot5Turbo, openai.GPT3Dot5Turbo16K:
+		modelTokenLimit = 16385
+	}
+
+	// Prune messages if we are over the token limit.
+	if countTokens(msgs...) > modelTokenLimit && len(c.lastIssues) > 1 {
+		c.lastIssues = c.lastIssues[:len(c.lastIssues)/2]
+		goto constructMsgs
+	}
 
 	request.Messages = msgs
 	return request
