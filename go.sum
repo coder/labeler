@@ -10,8 +10,6 @@ cloud.google.com/go/longrunning v0.5.4 h1:w8xEcbZodnA2BbW6sVirkkoC+1gP8wS57EUUgG
 cloud.google.com/go/longrunning v0.5.4/go.mod h1:zqNVncI0BOP8ST6XQD1+VcvuShMmq7+xFSzOL++V0dI=
 github.com/ammario/prefixsuffix v0.0.0-20200405191514-5a0456bf2cfd h1:WOzjyD34+0vVw3wzE7js8Yvzo08ljzvK1jG6wL8elVU=
 github.com/ammario/prefixsuffix v0.0.0-20200405191514-5a0456bf2cfd/go.mod h1:VM1c/0Tl3O26UkHMbU32VFqLwLvi2FA40b6s5vPOpoo=
-github.com/ammario/tlru v0.3.0 h1:yK8ESoFlEyz/BVVL8yZQKAUzJwFJR/j9EfxjnKxtR/Q=
-github.com/ammario/tlru v0.3.0/go.mod h1:aYzRFu0XLo4KavE9W8Lx7tzjkX+pAApz+NgcKYIFUBQ=
 github.com/ammario/tlru v0.4.0 h1:sJ80I0swN3KOX2YxC6w8FbCqpQucWdbb+J36C05FPuU=
 github.com/ammario/tlru v0.4.0/go.mod h1:aYzRFu0XLo4KavE9W8Lx7tzjkX+pAApz+NgcKYIFUBQ=
 github.com/armon/go-radix v1.0.0 h1:F4z6KzEeeQIMeLFa97iZU6vupzoecKdU5TX24SNppXI=

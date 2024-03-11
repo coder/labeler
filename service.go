@@ -13,6 +13,7 @@ import (
 
 	"github.com/ammario/tlru"
 	"github.com/beatlabs/github-auth/app"
+	"github.com/coder/labeler/ghapi"
 	"github.com/coder/labeler/httpjson"
 	"github.com/coder/retry"
 	"github.com/go-chi/chi/v5"
@@ -38,6 +39,8 @@ type Service struct {
 	//
 	// That will rarely happen in production.
 	repoLabelsCache *tlru.Cache[repoAddr, []*github.Label]
+
+	recentIssuesCache *tlru.Cache[repoAddr, []*github.Issue]
 }
 
 func (s *Service) Init() {
@@ -47,7 +50,10 @@ func (s *Service) Init() {
 
 	s.repoLabelsCache = tlru.New[repoAddr](func(ls []*github.Label) int {
 		return len(ls)
-	}, 1024)
+	}, 4096)
+	s.recentIssuesCache = tlru.New[repoAddr](func(ls []*github.Issue) int {
+		return len(ls)
+	}, 4096)
 }
 
 func filterIssues(slice []*github.Issue, f func(*github.Issue) bool) []*github.Issue {
@@ -80,17 +86,30 @@ func (s *Service) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 
 	githubClient := github.NewClient(instConfig.Client(ctx))
 
-	lastIssues, _, err := githubClient.Issues.ListByRepo(
-		ctx,
-		req.User,
-		req.Repo,
-		&github.IssueListByRepoOptions{
-			State: "all",
-			ListOptions: github.ListOptions{
-				PerPage: 100,
+	lastIssues, err := s.recentIssuesCache.Do(repoAddr{
+		install: req.InstallID,
+		user:    req.User,
+		repo:    req.Repo,
+	}, func() ([]*github.Issue, error) {
+		return ghapi.Page(
+			ctx,
+			githubClient,
+			func(ctx context.Context, opt *github.ListOptions) ([]*github.Issue, *github.Response, error) {
+				issues, resp, err := githubClient.Issues.ListByRepo(
+					ctx,
+					req.User,
+					req.Repo,
+					&github.IssueListByRepoOptions{
+						State:       "all",
+						ListOptions: *opt,
+					},
+				)
+
+				return ghapi.OnlyTrueIssues(issues), resp, err
 			},
-		},
-	)
+			100,
+		)
+	}, time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("list issues: %w", err)
 	}
@@ -104,7 +123,7 @@ func (s *Service) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 			PerPage: 100,
 		})
 		return labels, err
-	}, time.Second)
+	}, time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("list labels: %w", err)
 	}
@@ -133,7 +152,7 @@ func (s *Service) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 	}
 
 retryAI:
-	ret := retry.New(time.Millisecond*100, time.Second*5)
+	ret := retry.New(time.Second, time.Second*10)
 	resp, err := s.OpenAI.CreateChatCompletion(
 		ctx,
 		aiContext.Request(s.Model),
@@ -141,7 +160,7 @@ retryAI:
 	if err != nil {
 		var aiErr *openai.APIError
 		if errors.As(err, &aiErr) {
-			if aiErr.HTTPStatusCode >= 500 && ret.Wait(ctx) {
+			if (aiErr.HTTPStatusCode >= 500 || aiErr.HTTPStatusCode == 429) && ret.Wait(ctx) {
 				s.Log.Warn("retrying AI call", "error", err)
 				goto retryAI
 			}
@@ -165,7 +184,18 @@ retryAI:
 	}
 	err = json.Unmarshal([]byte(toolCall.Function.Arguments), &setLabels)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal setLabels: %w, toolCall: %+v", err, toolCall)
+		var setLabelsStr struct {
+			Labels string `json:"labels"`
+		}
+
+		// Sometimes the labels are returned as a string.
+		err2 := json.Unmarshal([]byte(toolCall.Function.Arguments), &setLabelsStr)
+		if err2 != nil {
+			return nil, errors.Join(
+				fmt.Errorf("unmarshal setLabels: %w, toolCall: %+v", err, toolCall),
+				err2,
+			)
+		}
 	}
 
 	return &InferResponse{

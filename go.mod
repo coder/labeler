@@ -8,10 +8,12 @@ require (
 	github.com/lmittmann/tint v1.0.4
 )
 
-require github.com/ammario/prefixsuffix v0.0.0-20200405191514-5a0456bf2cfd
+require (
+	github.com/ammario/prefixsuffix v0.0.0-20200405191514-5a0456bf2cfd
+	github.com/ammario/tlru v0.4.0
+)
 
 require (
-	github.com/ammario/tlru v0.4.0 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 )

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"sort"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -33,12 +35,18 @@ type testStats struct {
 }
 
 func (s *testStats) process(
+	w io.Writer,
 	start time.Time,
 	wantLabels []string,
 	infResp *labeler.InferResponse,
 ) {
 	s.nIssues++
 
+	slices.Sort(wantLabels)
+	slices.Sort(infResp.SetLabels)
+
+	fmt.Fprintf(w, "want:  %v\n", wantLabels)
+	fmt.Fprintf(w, "infer: %v\n", infResp.SetLabels)
 	for _, label := range wantLabels {
 		if !slices.Contains(infResp.SetLabels, label) {
 			s.falseRms = append(s.falseRms, label)
@@ -91,10 +99,14 @@ func (s *testStats) print(w io.Writer) error {
 
 	fmt.Fprintf(twr, "Total issues:\t%d\n", s.nIssues)
 	fmt.Fprintf(twr, "False adds:\t%d\t%.2f%%\n", len(s.falseAdds), float64(len(s.falseAdds))/float64(s.nIssues)*100)
+	fmt.Fprintf(twr, "Top false adds:\t%v\n", topN(uniqCount(s.falseAdds), 5))
+
 	fmt.Fprintf(twr, "False removes:\t%d\t%.2f%%\n", len(s.falseRms), float64(len(s.falseRms))/float64(s.nIssues)*100)
-	fmt.Fprintf(twr, "Hits:\t%d\t%.2f%%\t%v\n", len(s.hits), float64(len(s.hits))/float64(s.nIssues)*100,
-		topN(uniqCount(s.hits), 5),
-	)
+	fmt.Fprintf(twr, "Top false removes:\t%v\n", topN(uniqCount(s.falseRms), 5))
+
+	fmt.Fprintf(twr, "Hits:\t%d\t%.2f%%\n", len(s.hits), float64(len(s.hits))/float64(s.nIssues)*100)
+	fmt.Fprintf(twr, "Top hit labels:\t%v\n", topN(uniqCount(s.hits), 5))
+
 	fmt.Fprintf(twr, "Tokens used:\t%d\n", s.tokens)
 	return twr.Flush()
 }
@@ -144,14 +156,17 @@ func (r *rootCmd) testCmd() *serpent.Cmd {
 				githubClient,
 				func(ctx context.Context, opt *github.ListOptions) ([]*github.Issue, *github.Response, error) {
 					log.Info("load issues page from GitHub")
-					return githubClient.Issues.ListByRepo(
+					issues, resp, err := githubClient.Issues.ListByRepo(
 						ctx,
 						user,
 						repo,
 						&github.IssueListByRepoOptions{
-							State: "all",
+							State:       "all",
+							ListOptions: *opt,
 						},
 					)
+
+					return ghapi.OnlyTrueIssues(issues), resp, err
 				},
 				int(nIssues),
 			)
@@ -159,7 +174,11 @@ func (r *rootCmd) testCmd() *serpent.Cmd {
 				return fmt.Errorf("list issues: %w", err)
 			}
 
-			var st testStats
+			var (
+				st        testStats
+				stMu      sync.Mutex
+				semaphore = make(chan struct{}, 4)
+			)
 
 			for i, issue := range testIssues {
 				wantLabels := make([]string, 0, len(issue.Labels))
@@ -167,23 +186,50 @@ func (r *rootCmd) testCmd() *serpent.Cmd {
 					wantLabels = append(wantLabels, label.GetName())
 				}
 
-				start := time.Now()
-				resp, err := srv.Infer(ctx, &labeler.InferRequest{
-					InstallID: installID,
-					User:      user,
-					Repo:      repo,
-					Issue:     issue.GetNumber(),
-				})
-				if err != nil {
-					return fmt.Errorf("infer: %w", err)
-				}
-				st.process(start, wantLabels, resp)
-
-				log.Info("processed issue",
-					"i", i,
-					"took", time.Since(start),
-					"num", issue.GetNumber(),
+				var (
+					issue = issue
+					i     = i
 				)
+
+				semaphore <- struct{}{}
+				go func() {
+					defer func() {
+						<-semaphore
+					}()
+
+					ctx, cancel := context.WithTimeout(ctx, time.Minute)
+					defer cancel()
+
+					start := time.Now()
+
+					resp, err := srv.Infer(ctx, &labeler.InferRequest{
+						InstallID: installID,
+						User:      user,
+						Repo:      repo,
+						Issue:     issue.GetNumber(),
+					})
+					if err != nil {
+						// It's typical of OpenAI to take a long time.
+						log.Error("infer", "err", err)
+						return
+					}
+
+					stMu.Lock()
+					defer stMu.Unlock()
+
+					log.Info("inferred issue",
+						"i", i,
+						"title", issue.GetTitle(),
+						"url", issue.GetHTMLURL(),
+						"took", time.Since(start).Truncate(time.Millisecond/10),
+						"num", issue.GetNumber(),
+					)
+					st.process(os.Stdout, start, wantLabels, resp)
+				}()
+			}
+
+			for len(semaphore) > 0 {
+				time.Sleep(time.Second)
 			}
 
 			return st.print(inv.Stdout)

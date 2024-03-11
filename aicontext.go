@@ -162,11 +162,17 @@ constructMsgs:
 	// Finally, add target issue.
 	msgs = append(msgs, targetIssueMsg)
 
-	modelTokenLimit := 0
+	var modelTokenLimit int
 
 	switch model {
 	case openai.GPT3Dot5Turbo, openai.GPT3Dot5Turbo16K:
 		modelTokenLimit = 16385
+	case openai.GPT4TurboPreview:
+		modelTokenLimit = 128000
+	default:
+		// Assume a big context window, errors are better than
+		// bad performance.
+		modelTokenLimit = 128000
 	}
 
 	// Prune messages if we are over the token limit.

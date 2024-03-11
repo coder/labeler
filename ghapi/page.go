@@ -40,3 +40,16 @@ func Page[T any](
 	}
 	return all, nil
 }
+
+func OnlyTrueIssues(
+	slice []*github.Issue,
+) []*github.Issue {
+	var result []*github.Issue
+	for _, item := range slice {
+		if item.IsPullRequest() {
+			continue
+		}
+		result = append(result, item)
+	}
+	return result
+}
