@@ -2,12 +2,18 @@
 
 `labeler` is a GitHub app that automatically labels newly created issues for you
 based on your past labelling decisions. You can install it on your repo
-[**here**](https://github.com/apps/coder-labeler).
+[**here**](https://github.com/marketplace/coder-labeler).
 
 ![img](./img/example-label.png)
 
 We currently use it on [`coder/coder`](https://github.com/coder/coder) and
 [`coder/code-server`](https://github.com/coder/code-server).
+
+## Configuration
+
+The labeler is configured by your label descriptions. For example, prevent the labeler from adding a `roadmap` label
+by adding "Only humans may set this label" to the your `roadmap` label description. In this way, the labeler
+interprets your label system in the same way a human would.
 
 ## Architecture
 
