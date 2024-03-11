@@ -91,7 +91,8 @@ func (c *aiContext) Request() openai.ChatCompletionRequest {
 	msgs = append(msgs, openai.ChatCompletionMessage{
 		Role: "system",
 		Content: `You are a bot that helps labels issues on GitHub using the "setLabel"
-		function. Avoid applying labels to issues that are meant for Pull Requests only.`,
+		function. Avoid applying labels to issues that are meant for Pull Requests only. Avoid applying labels when
+		the label description says something like "Only humans may set this".`,
 	})
 
 	for _, issue := range c.lastIssues {
