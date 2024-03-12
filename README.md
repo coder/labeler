@@ -11,7 +11,7 @@ We currently use it on [`coder/coder`](https://github.com/coder/coder) and
 
 ## Configuration
 
-The labeler is generally configured by your label descriptions. In this way, the labeler
+The labeler is configured by your label descriptions. This way, the labeler
 interprets your label system in the same way a human would.
 
 For the time being, the magic string `Only humans may set this` will forcefully prevent
@@ -37,8 +37,10 @@ a more complex vector DB / embedding system. This is because of the proven
 accuracy of @cdr-bot on coder/coder and the fact that the completion approach lets us remove
 the need for a DB.
 
-On the other hand, completions are an order of magnitude more expensive, so
-costs may approach ~10c per opened issue. If the project reaches a scale where that becomes an issue, we can switch to an embedding system, GPT-3.5, or accept an OpenAI key.
+On the other hand, completions are pretty expensive, so
+costs may approach ~10c per opened issue on a popular repository. If the project
+reaches a scale where that becomes an issue, we can switch to an embedding system, GPT-3.5,
+or accept an OpenAI key.
 
 ### Context construction
 

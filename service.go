@@ -338,7 +338,8 @@ func (s *Service) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Resp
 		"install_id", payload.Installation.ID,
 		"user", repo.Owner.Login,
 		"repo", repo.Name,
-		"issue", payload.Issue.Number,
+		"issue_num", payload.Issue.Number,
+		"issue_url", payload.Issue.HTMLURL,
 	)
 
 	log.Info("labels set",
