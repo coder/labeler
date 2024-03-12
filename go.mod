@@ -27,7 +27,7 @@ replace github.com/jussi-kalliokoski/slogdriver => github.com/ammario/slogdriver
 require (
 	cdr.dev/slog v1.6.2-0.20240126064726-20367d4aede6 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/coder/coder/v2 v2.8.3 // indirect
+	github.com/coder/coder/v2 v2.8.4 // indirect
 	github.com/coder/pretty v0.0.0-20230908205945-e89ba86370e0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.6.0
