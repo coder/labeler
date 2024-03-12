@@ -334,6 +334,18 @@ func (s *Service) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Resp
 		return s.serverError(err)
 	}
 
+	log := s.Log.With(
+		"install_id", payload.Installation.ID,
+		"user", repo.Owner.Login,
+		"repo", repo.Name,
+		"issue", payload.Issue.Number,
+	)
+
+	log.Info("labels set",
+		"labels", resp.SetLabels,
+		"tokens_used", resp.TokensUsed,
+	)
+
 	return &httpjson.Response{
 		Status: http.StatusOK,
 		Body:   httpjson.M{"message": "labels set", "labels": resp.SetLabels},
