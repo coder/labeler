@@ -11,22 +11,36 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coder/labeler"
-	"github.com/coder/serpent"
-	"github.com/lmittmann/tint"
-	"github.com/sashabaranov/go-openai"
-
+	"cloud.google.com/go/compute/metadata"
 	"github.com/beatlabs/github-auth/app"
 	appkey "github.com/beatlabs/github-auth/key"
+	"github.com/coder/labeler"
+	"github.com/coder/serpent"
+	"github.com/jussi-kalliokoski/slogdriver"
+	"github.com/lmittmann/tint"
+	"github.com/sashabaranov/go-openai"
 )
 
 func newLogger() *slog.Logger {
-	logOpts := &tint.Options{
-		AddSource:  true,
-		Level:      slog.LevelDebug,
-		TimeFormat: time.Kitchen + " 05.999",
+	gcpProjectID, err := metadata.ProjectID()
+	if err != nil {
+		logOpts := &tint.Options{
+			AddSource:  true,
+			Level:      slog.LevelDebug,
+			TimeFormat: time.Kitchen + " 05.999",
+		}
+		return slog.New(tint.NewHandler(os.Stderr, logOpts))
 	}
-	return slog.New(tint.NewHandler(os.Stderr, logOpts))
+
+	return slog.New(
+		slogdriver.NewHandler(
+			os.Stderr,
+			slogdriver.Config{
+				ProjectID: gcpProjectID,
+				Level:     slog.LevelDebug,
+			},
+		),
+	)
 }
 
 type rootCmd struct {

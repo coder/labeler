@@ -9,14 +9,20 @@ require (
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.2.3
 	github.com/ammario/prefixsuffix v0.0.0-20200405191514-5a0456bf2cfd
 	github.com/ammario/tlru v0.4.0
+	github.com/jussi-kalliokoski/slogdriver v1.0.0
 )
 
 require (
+	cloud.google.com/go/compute v1.25.0 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
+	github.com/jussi-kalliokoski/goldjson v1.0.0 // indirect
 )
+
+replace github.com/jussi-kalliokoski/slogdriver => github.com/ammario/slogdriver v0.0.0-20240312193005-cef0f67904ac
 
 require (
 	cdr.dev/slog v1.6.2-0.20240126064726-20367d4aede6 // indirect
@@ -37,8 +43,8 @@ require (
 	github.com/pion/udp v0.1.4 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	go.opentelemetry.io/otel v1.19.0 // indirect
-	go.opentelemetry.io/otel/trace v1.19.0 // indirect
+	go.opentelemetry.io/otel v1.23.0 // indirect
+	go.opentelemetry.io/otel/trace v1.23.0 // indirect
 	golang.org/x/crypto v0.19.0 // indirect
 	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
