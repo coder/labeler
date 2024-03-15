@@ -316,6 +316,13 @@ func (s *Service) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Resp
 		return s.serverError(err)
 	}
 
+	if len(resp.SetLabels) == 0 {
+		return &httpjson.Response{
+			Status: http.StatusOK,
+			Body:   httpjson.M{"message": "no labels to set"},
+		}
+	}
+
 	// Set the labels.
 	instConfig, err := s.AppConfig.InstallationConfig(strconv.FormatInt(payload.Installation.ID, 10))
 	if err != nil {
@@ -331,7 +338,7 @@ func (s *Service) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Resp
 		resp.SetLabels,
 	)
 	if err != nil {
-		return s.serverError(err)
+		return s.serverError(fmt.Errorf("set %v: %w", resp.SetLabels, err))
 	}
 
 	log := s.Log.With(
