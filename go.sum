@@ -23,8 +23,8 @@ github.com/beatlabs/github-auth v0.0.0-20240224180412-b8b13544edcc h1:n04oSGcKy+
 github.com/beatlabs/github-auth v0.0.0-20240224180412-b8b13544edcc/go.mod h1:J1rlRMAq9eXyM4qQppYccf6im9rC5Q3mSGeTrxp/HLw=
 github.com/charmbracelet/lipgloss v0.8.0 h1:IS00fk4XAHcf8uZKc3eHeMUTCxUH6NkaTrdyCQk84RU=
 github.com/charmbracelet/lipgloss v0.8.0/go.mod h1:p4eYUZZJ/0oXTuCQKFF8mqyKCz0ja6y+7DniDDw5KKU=
-github.com/coder/coder/v2 v2.8.3 h1:DpdiCfKhyKd6hwJKOeHf6rdYd2+petdI76qDCl9CsCs=
-github.com/coder/coder/v2 v2.8.3/go.mod h1:sH8OtYWiRq/dDYt/65T8tX1IXFOUDT81RtgMrJWf6HU=
+github.com/coder/coder/v2 v2.8.4 h1:Vme+WEAEYy/fujLdSY/Cu26hGg48CzHCuv0ZgeBnUnE=
+github.com/coder/coder/v2 v2.8.4/go.mod h1:sH8OtYWiRq/dDYt/65T8tX1IXFOUDT81RtgMrJWf6HU=
 github.com/coder/pretty v0.0.0-20230908205945-e89ba86370e0 h1:3A0ES21Ke+FxEM8CXx9n47SZOKOpgSE1bbJzlE4qPVs=
 github.com/coder/pretty v0.0.0-20230908205945-e89ba86370e0/go.mod h1:5UuS2Ts+nTToAMeOjNlnHFkPahrtDkmpydBen/3wgZc=
 github.com/coder/retry v1.5.1 h1:iWu8YnD8YqHs3XwqrqsjoBTAVqT9ml6z9ViJ2wlMiqc=
