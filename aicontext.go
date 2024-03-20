@@ -118,7 +118,7 @@ constructMsgs:
 	msgs = append(msgs, openai.ChatCompletionMessage{
 		Role: "system",
 		Content: `You are a bot that helps labels issues on GitHub using the "setLabel"
-		function. Avoid applying labels to issues that are meant for Pull Requests only. Avoid applying labels when
+		function. Do not apply labels that are meant for Pull Requests. Avoid applying labels when
 		the label description says something like "` + magicDisableString + `". The labels available are:
 		` + labelsDescription.String(),
 	})
