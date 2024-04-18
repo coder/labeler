@@ -3,6 +3,7 @@ package labeler
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"github.com/ammario/prefixsuffix"
@@ -89,6 +90,8 @@ func (c *aiContext) Request(
 	const labelFuncName = "setLabels"
 	request := openai.ChatCompletionRequest{
 		Model: model,
+		// We use LogProbs to determine level of confidence.
+		LogProbs: true,
 		// Want high determinism.
 		Temperature: 0,
 		Tools: []openai.Tool{
@@ -111,6 +114,12 @@ func (c *aiContext) Request(
 			},
 		},
 	}
+
+	// See https://gist.github.com/ammario/6321e803f78f21e3ae87ab4f9e26a4e7
+	// for slight performance improvement.
+	rand.Shuffle(len(c.lastIssues), func(i, j int) {
+		c.lastIssues[i], c.lastIssues[j] = c.lastIssues[j], c.lastIssues[i]
+	})
 
 constructMsgs:
 	var msgs []openai.ChatCompletionMessage
