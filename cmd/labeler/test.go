@@ -14,6 +14,7 @@ import (
 	"github.com/coder/labeler"
 	"github.com/coder/labeler/ghapi"
 	"github.com/coder/serpent"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/go-github/v59/github"
 )
 
@@ -142,7 +143,8 @@ func (r *rootCmd) testCmd() *serpent.Command {
 				Model:     r.openAIModel,
 				AppConfig: appConfig,
 			}
-			srv.Init()
+			mux := chi.NewMux()
+			srv.Init(mux)
 
 			instConfig, err := appConfig.InstallationConfig(installID)
 			if err != nil {

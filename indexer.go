@@ -13,6 +13,7 @@ import (
 	"github.com/coder/labeler/ghapi"
 	"github.com/google/go-github/v59/github"
 	"github.com/sashabaranov/go-openai"
+	"google.golang.org/api/iterator"
 )
 
 type Indexer struct {
@@ -89,6 +90,68 @@ func (s *Indexer) embedIssue(ctx context.Context, issue *github.Issue) ([]float6
 	return f32to64(resp.Data[0].Embedding), nil
 }
 
+func (s *Indexer) issuesTable() *bigquery.Table {
+	return s.BigQuery.Dataset("ghindex").Table("issues")
+}
+
+// getCachedIssues helps avoid duplicate inserts by letting the caller skip over
+// issues that have already been indexed.
+func (s *Indexer) getCachedIssues(ctx context.Context, installID int64) (map[int64]time.Time, error) {
+	queryStr := `
+	WITH RankedIssues AS (
+	  SELECT
+		id,
+		updated_at,
+		inserted_at,
+		ROW_NUMBER() OVER (PARTITION BY inserted_at, id ORDER BY inserted_at DESC) AS rn
+	  FROM
+		` + "`coder-labeler.ghindex.issues`" + `
+	  WHERE install_id = @install_id
+	)
+	SELECT
+	  id,
+	  updated_at
+	FROM
+	  RankedIssues
+	WHERE
+	  rn = 1
+	ORDER BY
+	  inserted_at DESC;
+	`
+
+	q := s.BigQuery.Query(queryStr)
+	q.Parameters = []bigquery.QueryParameter{
+		{
+			Name:  "install_id",
+			Value: installID,
+		},
+	}
+
+	job, err := q.Run(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("run query: %w", err)
+	}
+	iter, err := job.Read(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read query: %w", err)
+	}
+
+	issues := make(map[int64]time.Time)
+	for {
+		var i BqIssue
+		err := iter.Next(&i)
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			s.Log.Error("read issue", "error", err)
+			break
+		}
+		issues[i.ID] = i.UpdatedAt
+	}
+	return issues, nil
+}
+
 // indexInstall indexes all the issues for an installation.
 func (s *Indexer) indexInstall(ctx context.Context, install *github.Installation) error {
 	idstr := fmt.Sprintf("%d", install.GetID())
@@ -116,10 +179,17 @@ func (s *Indexer) indexInstall(ctx context.Context, install *github.Installation
 		return fmt.Errorf("list repos: %w", err)
 	}
 
-	s.Log.Debug("indexing install", "id", install.GetID(), "repos", len(repos))
+	log := s.Log.With("install", install.GetID())
+	log.Debug("indexing install", "repos", len(repos))
 
-	table := s.BigQuery.Dataset("ghindex").Table("issues")
+	table := s.issuesTable()
 	inserter := table.Inserter()
+
+	cachedIssues, err := s.getCachedIssues(ctx, install.GetID())
+	if err != nil {
+		return fmt.Errorf("get cached issues: %w", err)
+	}
+	log.Debug("got cached issues", "count", len(cachedIssues))
 
 	for _, repo := range repos {
 		// List all issues
@@ -143,6 +213,12 @@ func (s *Indexer) indexInstall(ctx context.Context, install *github.Installation
 		log.Debug("found issues", "count", len(issues))
 
 		for _, issue := range issues {
+			if uat, ok := cachedIssues[issue.GetID()]; ok {
+				if issue.UpdatedAt.Time.Equal(uat) {
+					log.Debug("skipping issue due to cache", "num", issue.GetNumber())
+					continue
+				}
+			}
 			emb, err := s.embedIssue(ctx, issue)
 			if err != nil {
 				return fmt.Errorf("embed issue %v: %w", issue.ID, err)
@@ -168,7 +244,7 @@ func (s *Indexer) indexInstall(ctx context.Context, install *github.Installation
 			log.Debug("indexed issue", "num", issue.GetNumber())
 		}
 	}
-
+	log.Debug("finished indexing")
 	return nil
 }
 
@@ -187,7 +263,7 @@ func (s *Indexer) runIndex(ctx context.Context) error {
 
 // Run starts the indexer and blocks until it's done.
 func (s *Indexer) Run(ctx context.Context) error {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 	for {
 		err := s.runIndex(ctx)

@@ -18,6 +18,7 @@ import (
 	"github.com/coder/labeler"
 	"github.com/coder/retry"
 	"github.com/coder/serpent"
+	"github.com/go-chi/chi/v5"
 	"github.com/jussi-kalliokoski/slogdriver"
 	"github.com/lmittmann/tint"
 	"github.com/sashabaranov/go-openai"
@@ -147,7 +148,9 @@ func main() {
 				AppConfig: appConfig,
 			}
 
-			wh.Init()
+			mux := chi.NewMux()
+
+			wh.Init(mux)
 
 			bqClient, err := bigquery.NewClient(ctx, root.googleProjectID)
 			if err != nil {
@@ -175,7 +178,7 @@ func main() {
 				}
 			}()
 
-			return http.Serve(listener, wh)
+			return http.Serve(listener, mux)
 		},
 		Options: []serpent.Option{
 			{

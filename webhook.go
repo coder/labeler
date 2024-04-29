@@ -44,8 +44,8 @@ type Webhook struct {
 	recentIssuesCache *tlru.Cache[repoAddr, []*github.Issue]
 }
 
-func (s *Webhook) Init() {
-	s.router = chi.NewRouter()
+func (s *Webhook) Init(r *chi.Mux) {
+	s.router = r
 	s.router.Mount("/infer", httpjson.Handler(s.infer))
 	s.router.Mount("/webhook", httpjson.Handler(s.webhook))
 
@@ -358,8 +358,4 @@ func (s *Webhook) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Resp
 		Status: http.StatusOK,
 		Body:   httpjson.M{"message": "labels set", "labels": resp.SetLabels},
 	}
-}
-
-func (s *Webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
 }

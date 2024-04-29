@@ -5,6 +5,10 @@ import "time"
 // BqIssue represents a GitHub issue in BigQuery.
 // The schema is defined here:
 // https://console.cloud.google.com/bigquery?authuser=1&folder=297399687849&organizationId=867596835188&orgonly=true&project=coder-labeler&supportedpurview=organizationId&ws=!1m5!1m4!4m3!1scoder-labeler!2sghindex!3sissues.
+//
+// CREATE VECTOR INDEX my_index ON my_dataset.my_table(embedding)
+// OPTIONS(index_type = 'IVF', distance_type = 'COSINE',
+// ivf_options = '{"num_lists": 2500}')
 type BqIssue struct {
 	ID          int64     `bigquery:"id"`
 	InstallID   int64     `bigquery:"install_id"`
