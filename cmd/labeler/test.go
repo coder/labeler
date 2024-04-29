@@ -111,14 +111,14 @@ func (s *testStats) print(w io.Writer) error {
 	return twr.Flush()
 }
 
-func (r *rootCmd) testCmd() *serpent.Cmd {
+func (r *rootCmd) testCmd() *serpent.Command {
 	var (
 		installID string
 		user      string
 		repo      string
 		nIssues   int64
 	)
-	return &serpent.Cmd{
+	return &serpent.Command{
 		Use:   "test",
 		Short: "Test performance and accuracy of a given repo",
 		Handler: func(inv *serpent.Invocation) error {
@@ -136,7 +136,7 @@ func (r *rootCmd) testCmd() *serpent.Cmd {
 				return err
 			}
 
-			srv := &labeler.Service{
+			srv := &labeler.Webhook{
 				Log:       log,
 				OpenAI:    ai,
 				Model:     r.openAIModel,

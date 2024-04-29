@@ -27,7 +27,7 @@ type repoAddr struct {
 	install, user, repo string
 }
 
-type Service struct {
+type Webhook struct {
 	Log       *slog.Logger
 	OpenAI    *openai.Client
 	AppConfig *app.Config
@@ -44,7 +44,7 @@ type Service struct {
 	recentIssuesCache *tlru.Cache[repoAddr, []*github.Issue]
 }
 
-func (s *Service) Init() {
+func (s *Webhook) Init() {
 	s.router = chi.NewRouter()
 	s.router.Mount("/infer", httpjson.Handler(s.infer))
 	s.router.Mount("/webhook", httpjson.Handler(s.webhook))
@@ -79,7 +79,7 @@ type InferResponse struct {
 	TokensUsed int      `json:"tokens_used,omitempty"`
 }
 
-func (s *Service) Infer(ctx context.Context, req *InferRequest) (*InferResponse, error) {
+func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse, error) {
 	instConfig, err := s.AppConfig.InstallationConfig(req.InstallID)
 	if err != nil {
 		return nil, fmt.Errorf("get installation config: %w", err)
@@ -226,7 +226,7 @@ retryAI:
 	}, nil
 }
 
-func (s *Service) infer(w http.ResponseWriter, r *http.Request) *httpjson.Response {
+func (s *Webhook) infer(w http.ResponseWriter, r *http.Request) *httpjson.Response {
 	var (
 		installID = r.URL.Query().Get("install_id")
 		user      = r.URL.Query().Get("user")
@@ -265,7 +265,7 @@ func (s *Service) infer(w http.ResponseWriter, r *http.Request) *httpjson.Respon
 	}
 }
 
-func (s *Service) serverError(msg error) *httpjson.Response {
+func (s *Webhook) serverError(msg error) *httpjson.Response {
 	s.Log.Error("server error", "error", msg)
 	return &httpjson.Response{
 		Status: http.StatusInternalServerError,
@@ -273,7 +273,7 @@ func (s *Service) serverError(msg error) *httpjson.Response {
 	}
 }
 
-func (s *Service) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Response {
+func (s *Webhook) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Response {
 	hook, err := githook.New()
 	if err != nil {
 		if errors.Is(err, githook.ErrEventNotSpecifiedToParse) {
@@ -360,6 +360,6 @@ func (s *Service) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Resp
 	}
 }
 
-func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }

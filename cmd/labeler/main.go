@@ -11,10 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/compute/metadata"
 	"github.com/beatlabs/github-auth/app"
 	appkey "github.com/beatlabs/github-auth/key"
 	"github.com/coder/labeler"
+	"github.com/coder/retry"
 	"github.com/coder/serpent"
 	"github.com/jussi-kalliokoski/slogdriver"
 	"github.com/lmittmann/tint"
@@ -44,12 +46,13 @@ func newLogger() *slog.Logger {
 }
 
 type rootCmd struct {
-	appPEMFile  string
-	appPEMEnv   string
-	appID       string
-	openAIKey   string
-	openAIModel string
-	bindAddr    string
+	appPEMFile      string
+	appPEMEnv       string
+	appID           string
+	openAIKey       string
+	openAIModel     string
+	bindAddr        string
+	googleProjectID string
 }
 
 func (r *rootCmd) appConfig() (*app.Config, error) {
@@ -94,10 +97,10 @@ func (r *rootCmd) ai(ctx context.Context) (*openai.Client, error) {
 func main() {
 	log := newLogger()
 	var root rootCmd
-	cmd := &serpent.Cmd{
+	cmd := &serpent.Command{
 		Use:   "labeler",
 		Short: "labeler is the GitHub labeler backend service",
-		Children: []*serpent.Cmd{
+		Children: []*serpent.Command{
 			root.testCmd(),
 		},
 		Handler: func(inv *serpent.Invocation) error {
@@ -137,16 +140,42 @@ func main() {
 				listener.Close()
 			}()
 
-			srv := &labeler.Service{
+			wh := &labeler.Webhook{
 				Log:       log,
 				OpenAI:    oai,
 				Model:     root.openAIModel,
 				AppConfig: appConfig,
 			}
 
-			srv.Init()
+			wh.Init()
 
-			return http.Serve(listener, srv)
+			bqClient, err := bigquery.NewClient(ctx, root.googleProjectID)
+			if err != nil {
+				return fmt.Errorf("bigquery: %w", err)
+			}
+			defer bqClient.Close()
+
+			idx := &labeler.Indexer{
+				Log:       log,
+				OpenAI:    oai,
+				AppConfig: appConfig,
+				BigQuery:  bqClient,
+			}
+
+			go func() {
+				ret := retry.New(time.Second, time.Minute)
+
+			retry:
+				err := idx.Run(ctx)
+				if err != nil {
+					log.Error("indexer run", "err", err)
+					if ret.Wait(ctx) {
+						goto retry
+					}
+				}
+			}()
+
+			return http.Serve(listener, wh)
 		},
 		Options: []serpent.Option{
 			{
@@ -186,6 +215,12 @@ func main() {
 				Env:         "GITHUB_APP_PEM",
 				Description: "APP PEM in raw form.",
 				Value:       serpent.StringOf(&root.appPEMEnv),
+			},
+			{
+				Flag:    "google-project-id",
+				Env:     "GOOGLE_PROJECT_ID",
+				Value:   serpent.StringOf(&root.googleProjectID),
+				Default: "coder-labeler",
 			},
 		},
 	}

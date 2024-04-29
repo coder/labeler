@@ -197,3 +197,17 @@ constructMsgs:
 	request.Messages = msgs
 	return request
 }
+
+func tokenize(text string) []string {
+	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+	if err != nil {
+		panic(err)
+	}
+
+	_, strs, err := enc.Encode(text)
+	if err != nil {
+		panic(err)
+	}
+
+	return strs
+}

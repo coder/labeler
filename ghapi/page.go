@@ -3,6 +3,7 @@ package ghapi
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/google/go-github/v59/github"
 )
@@ -19,7 +20,7 @@ func Page[T any](
 		return all, nil
 	}
 	if n < 0 {
-		return nil, fmt.Errorf("n must be non-negative")
+		n = math.MaxInt64
 	}
 	opt := &github.ListOptions{PerPage: 100}
 	for {
