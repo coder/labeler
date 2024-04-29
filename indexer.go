@@ -17,10 +17,11 @@ import (
 )
 
 type Indexer struct {
-	Log       *slog.Logger
-	OpenAI    *openai.Client
-	AppConfig *app.Config
-	BigQuery  *bigquery.Client
+	Log           *slog.Logger
+	OpenAI        *openai.Client
+	AppConfig     *app.Config
+	BigQuery      *bigquery.Client
+	IndexInterval time.Duration
 }
 
 func (s *Indexer) findRandInstall(ctx context.Context) (*github.Installation, error) {
@@ -241,7 +242,11 @@ func (s *Indexer) indexInstall(ctx context.Context, install *github.Installation
 			if err != nil {
 				return fmt.Errorf("insert issue: %w", err)
 			}
-			log.Debug("indexed issue", "num", issue.GetNumber())
+			updateAge := time.Since(issue.GetUpdatedAt().Time).Truncate(time.Minute)
+			log.Debug(
+				"indexed issue", "num", issue.GetNumber(),
+				"update_age", updateAge.String(),
+			)
 		}
 	}
 	log.Debug("finished indexing")
@@ -263,7 +268,8 @@ func (s *Indexer) runIndex(ctx context.Context) error {
 
 // Run starts the indexer and blocks until it's done.
 func (s *Indexer) Run(ctx context.Context) error {
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(s.IndexInterval)
+	s.Log.Info("indexer started", "interval", s.IndexInterval)
 	defer ticker.Stop()
 	for {
 		err := s.runIndex(ctx)

@@ -23,6 +23,6 @@ deploy: push
 	# indexing (WIP) and to eventually set labels outside of the
 	# request-response cycle (escaping 10s webhook timeout)
 	gcloud run deploy labeler --project $(PROJECT) --image $(DOCKER_TAG) --region us-central1 \
-    --allow-unauthenticated --memory=128Mi \
-	--min-instances=1 \	--cpu-allocation=always \
+    --allow-unauthenticated --memory=512Mi \
+	--min-instances=1 --no-cpu-throttling  \
 	--set-secrets=OPENAI_API_KEY=openai-key:latest,GITHUB_APP_PEM=github-app-key:latest

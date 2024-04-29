@@ -54,6 +54,7 @@ type rootCmd struct {
 	openAIModel     string
 	bindAddr        string
 	googleProjectID string
+	indexInterval   time.Duration
 }
 
 func (r *rootCmd) appConfig() (*app.Config, error) {
@@ -159,10 +160,11 @@ func main() {
 			defer bqClient.Close()
 
 			idx := &labeler.Indexer{
-				Log:       log,
-				OpenAI:    oai,
-				AppConfig: appConfig,
-				BigQuery:  bqClient,
+				Log:           log,
+				OpenAI:        oai,
+				AppConfig:     appConfig,
+				BigQuery:      bqClient,
+				IndexInterval: root.indexInterval,
 			}
 
 			go func() {
@@ -224,6 +226,12 @@ func main() {
 				Env:     "GOOGLE_PROJECT_ID",
 				Value:   serpent.StringOf(&root.googleProjectID),
 				Default: "coder-labeler",
+			},
+			{
+				Flag:        "index-interval",
+				Description: "Interval to run the indexer.",
+				Value:       serpent.DurationOf(&root.indexInterval),
+				Default:     "1h",
 			},
 		},
 	}
