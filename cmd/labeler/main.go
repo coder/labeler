@@ -30,7 +30,7 @@ func newLogger() *slog.Logger {
 		logOpts := &tint.Options{
 			AddSource:  true,
 			Level:      slog.LevelDebug,
-			TimeFormat: time.Kitchen + " 05.999",
+			TimeFormat: time.Kitchen + " 05.000",
 		}
 		return slog.New(tint.NewHandler(os.Stderr, logOpts))
 	}
