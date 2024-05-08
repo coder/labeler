@@ -3,7 +3,9 @@ package labeler
 import (
 	"context"
 	"log/slog"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -72,6 +74,43 @@ func (s *Search) getCachedRepoIssues(ctx context.Context,
 	return issues, nil
 }
 
+func cosineSimilarity(a, b []float64) float64 {
+	var dot float64
+	var magA float64
+	var magB float64
+	for i := range a {
+		dot += a[i] * b[i]
+		magA += a[i] * a[i]
+		magB += b[i] * b[i]
+	}
+
+	magA = math.Sqrt(magA)
+	magB = math.Sqrt(magB)
+
+	return dot / (magA * magB)
+}
+
+type bqIssueWithSimilarity struct {
+	*BqIssue
+	Similarity float64
+}
+
+func bruteSearch(issues []*BqIssue, searchQuery []float64) []*bqIssueWithSimilarity {
+	var r1 []*bqIssueWithSimilarity
+	for _, issue := range issues {
+		similarity := cosineSimilarity(issue.Embedding, searchQuery)
+		r1 = append(r1, &bqIssueWithSimilarity{
+			BqIssue:    issue,
+			Similarity: similarity,
+		})
+	}
+	sort.Slice(r1, func(i, j int) bool {
+		return r1[i].Similarity > r1[j].Similarity
+	})
+
+	return r1
+}
+
 func (s *Search) search(w http.ResponseWriter, r *http.Request) *httpjson.Response {
 	owner := r.URL.Query().Get("owner")
 	if owner == "" {
@@ -86,6 +125,14 @@ func (s *Search) search(w http.ResponseWriter, r *http.Request) *httpjson.Respon
 		return &httpjson.Response{
 			Status: http.StatusBadRequest,
 			Body:   httpjson.M{"error": "missing repo"},
+		}
+	}
+
+	searchQuery := r.URL.Query().Get("q")
+	if searchQuery == "" {
+		return &httpjson.Response{
+			Status: http.StatusBadRequest,
+			Body:   httpjson.M{"error": "missing q"},
 		}
 	}
 
@@ -137,11 +184,43 @@ func (s *Search) search(w http.ResponseWriter, r *http.Request) *httpjson.Respon
 		}
 	}
 
+	if len(repoIssues) == 0 {
+		return &httpjson.Response{
+			Status: http.StatusNotFound,
+			Body:   httpjson.M{"error": "no issues found"},
+		}
+	}
+
+	searchEmbedding, err := s.OpenAI.CreateEmbeddings(
+		ctx,
+		&openai.EmbeddingRequestStrings{
+			Input: []string{searchQuery},
+			Model: openai.SmallEmbedding3,
+		},
+	)
+	if err != nil {
+		return &httpjson.Response{
+			Status: http.StatusInternalServerError,
+			Body:   httpjson.M{"error": err.Error()},
+		}
+	}
+
+	var searchEmbedding64 []float64
+	for _, f := range searchEmbedding.Data[0].Embedding {
+		searchEmbedding64 = append(searchEmbedding64, float64(f))
+	}
+
+	similarIssues := bruteSearch(repoIssues, searchEmbedding64)
+	const maxResults = 100
+	if len(similarIssues) > maxResults {
+		similarIssues = similarIssues[:maxResults]
+	}
+
 	return &httpjson.Response{
 		Status: http.StatusOK,
 		Body: httpjson.M{
 			"install_id": installID,
-			"issues":     repoIssues,
+			"issues":     similarIssues,
 		},
 	}
 }
