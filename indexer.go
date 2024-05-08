@@ -91,8 +91,12 @@ func (s *Indexer) embedIssue(ctx context.Context, issue *github.Issue) ([]float6
 	return f32to64(resp.Data[0].Embedding), nil
 }
 
+// issuesTableName is incremented with major schema changes since DML on
+// active tables is very slow.
+const issuesTableName = "issues_v2"
+
 func (s *Indexer) issuesTable() *bigquery.Table {
-	return s.BigQuery.Dataset("ghindex").Table("issues")
+	return s.BigQuery.Dataset("ghindex").Table(issuesTableName)
 }
 
 // getUpdatedAts helps avoid duplicate inserts by letting the caller skip over
@@ -106,7 +110,7 @@ func (s *Indexer) getUpdatedAts(ctx context.Context, installID int64) (map[int64
 		inserted_at,
 		ROW_NUMBER() OVER (PARTITION BY inserted_at, id ORDER BY inserted_at DESC) AS rn
 	  FROM
-		` + "`coder-labeler.ghindex.issues`" + `
+		` + "`coder-labeler.ghindex." + issuesTableName + "`" + `
 	  WHERE install_id = @install_id
 	)
 	SELECT
