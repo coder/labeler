@@ -39,7 +39,7 @@ func (s *Search) getCachedRepoIssues(ctx context.Context,
 ) ([]*BqIssue, error) {
 	query := s.BigQuery.Query(`
 		SELECT * FROM ` + "ghindex.`" + issuesTableName + "`" + ` WHERE repo = @repo
-		AND user = @owner AND state = 'open'
+		AND user = @owner AND state = 'open' AND pull_request = false
 	`)
 
 	query.Parameters = []bigquery.QueryParameter{
@@ -95,6 +95,7 @@ type bqIssueWithSimilarity struct {
 	Similarity float64
 }
 
+// TODO: I can parallelize this search or use coder/hnsw in the future.
 func bruteSearch(issues []*BqIssue, searchQuery []float64) []*bqIssueWithSimilarity {
 	var r1 []*bqIssueWithSimilarity
 	for _, issue := range issues {

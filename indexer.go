@@ -2,6 +2,7 @@ package labeler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -11,6 +12,7 @@ import (
 	"cloud.google.com/go/bigquery"
 	"github.com/beatlabs/github-auth/app"
 	"github.com/coder/labeler/ghapi"
+	"github.com/coder/retry"
 	"github.com/google/go-github/v59/github"
 	"github.com/sashabaranov/go-openai"
 	"google.golang.org/api/iterator"
@@ -72,6 +74,9 @@ func (s *Indexer) embedIssue(ctx context.Context, issue *github.Issue) ([]float6
 	if len(tokens) > 8191 {
 		tokens = tokens[:8191]
 	}
+
+	r := retry.New(time.Second, 5*time.Minute)
+retry:
 	resp, err := s.OpenAI.CreateEmbeddings(
 		ctx,
 		&openai.EmbeddingRequestStrings{
@@ -81,6 +86,13 @@ func (s *Indexer) embedIssue(ctx context.Context, issue *github.Issue) ([]float6
 		},
 	)
 	if err != nil {
+		var oe *openai.APIError
+		// OpenAI loves to 500.
+		if errors.As(err, &oe) && oe.HTTPStatusCode >= 500 {
+			if r.Wait(ctx) {
+				goto retry
+			}
+		}
 		return nil, err
 	}
 
