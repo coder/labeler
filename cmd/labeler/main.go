@@ -159,26 +159,36 @@ func main() {
 			}
 			defer bqClient.Close()
 
-			idx := &labeler.Indexer{
-				Log:           log,
-				OpenAI:        oai,
-				AppConfig:     appConfig,
-				BigQuery:      bqClient,
-				IndexInterval: root.indexInterval,
+			searcher := &labeler.Search{
+				Log:       log,
+				OpenAI:    oai,
+				AppConfig: appConfig,
+				BigQuery:  bqClient,
 			}
+			searcher.Init(mux)
 
-			go func() {
-				ret := retry.New(time.Second, time.Minute)
-
-			retry:
-				err := idx.Run(ctx)
-				if err != nil {
-					log.Error("indexer run", "err", err)
-					if ret.Wait(ctx) {
-						goto retry
-					}
+			if root.indexInterval > 0 {
+				idx := &labeler.Indexer{
+					Log:           log,
+					OpenAI:        oai,
+					AppConfig:     appConfig,
+					BigQuery:      bqClient,
+					IndexInterval: root.indexInterval,
 				}
-			}()
+
+				go func() {
+					ret := retry.New(time.Second, time.Minute)
+
+				retry:
+					err := idx.Run(ctx)
+					if err != nil {
+						log.Error("indexer run", "err", err)
+						if ret.Wait(ctx) {
+							goto retry
+						}
+					}
+				}()
+			}
 
 			return http.Serve(listener, mux)
 		},
@@ -229,7 +239,7 @@ func main() {
 			},
 			{
 				Flag:        "index-interval",
-				Description: "Interval to run the indexer.",
+				Description: "Interval to run the indexer. If zero disables the indexer.",
 				Value:       serpent.DurationOf(&root.indexInterval),
 				Default:     "1h",
 			},
