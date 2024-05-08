@@ -46,7 +46,7 @@ func (s *Indexer) findRandInstall(ctx context.Context) (*github.Installation, er
 	return toIndex, nil
 }
 
-const embeddingDimensions = 1536
+const embeddingDimensions = 256
 
 func f32to64(f []float32) []float64 {
 	out := make([]float64, len(f))
@@ -95,9 +95,9 @@ func (s *Indexer) issuesTable() *bigquery.Table {
 	return s.BigQuery.Dataset("ghindex").Table("issues")
 }
 
-// getCachedIssues helps avoid duplicate inserts by letting the caller skip over
+// getUpdatedAts helps avoid duplicate inserts by letting the caller skip over
 // issues that have already been indexed.
-func (s *Indexer) getCachedIssues(ctx context.Context, installID int64) (map[int64]time.Time, error) {
+func (s *Indexer) getUpdatedAts(ctx context.Context, installID int64) (map[int64]time.Time, error) {
 	queryStr := `
 	WITH RankedIssues AS (
 	  SELECT
@@ -186,7 +186,7 @@ func (s *Indexer) indexInstall(ctx context.Context, install *github.Installation
 	table := s.issuesTable()
 	inserter := table.Inserter()
 
-	cachedIssues, err := s.getCachedIssues(ctx, install.GetID())
+	cachedIssues, err := s.getUpdatedAts(ctx, install.GetID())
 	if err != nil {
 		return fmt.Errorf("get cached issues: %w", err)
 	}
