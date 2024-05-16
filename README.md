@@ -9,11 +9,14 @@ based on your past labelling decisions. You can install it on your repo
 We currently use it on [`coder/coder`](https://github.com/coder/coder) and
 [`coder/code-server`](https://github.com/coder/code-server).
 
-The labeler is well-suited to manage labels that _categorize_ or _reduce_ the
+The labeler is well-suited to manage labels that _describe_ or _reduce_ the
 semantic information of an issue. For example, labels like `bug`, `enhancement`,
 are self-evident from the contents of an issue. Often, a tracker will use labels
-that add information to an issue, e.g. `wontfix`, `roadmap`. These additive
+that add information to an issue, e.g. `wontfix`, `roadmap`. These _inscriptive_
 labels should be disabled in your configuration.
+
+[#5](https://github.com/coder/labeler/issues/5) tracks the automatic disabling
+of inscriptive labels.
 
 ## Configuration
 
