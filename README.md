@@ -9,13 +9,28 @@ based on your past labelling decisions. You can install it on your repo
 We currently use it on [`coder/coder`](https://github.com/coder/coder) and
 [`coder/code-server`](https://github.com/coder/code-server).
 
+The labeler is well-suited to manage labels that _categorize_ or _reduce_ the
+semantic information of an issue. For example, labels like `bug`, `enhancement`,
+are self-evident from the contents of an issue. Often, a tracker will use labels
+that add information to an issue, e.g. `wontfix`, `roadmap`. These additive
+labels should be disabled in your configuration.
+
 ## Configuration
 
-The labeler is configured by your label descriptions. This way, the labeler
-interprets your label system in the same way a human would.
+The labeler's primary configuration is your label descriptions. This way, the labeler interprets your label system in the same way a human would.
 
-For the time being, the magic string `Only humans may set this` will forcefully prevent
-the labeler from adding a label, although a synonym may work as well.
+Additionally, the `labeler` reads your `.github/labeler.yml`
+file for a list of Regex exclusions. Here's an example:
+
+```yaml
+# .github/labeler.yml
+exclude:
+    - good first issue
+    - customer.*$
+```
+
+[#4](https://github.com/coder/labeler/issues/4) tracks the creation
+of a dashboard for debugging configuration.
 
 ## Architecture
 

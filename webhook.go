@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,10 +22,12 @@ import (
 	githook "github.com/go-playground/webhooks/v6/github"
 	"github.com/google/go-github/v59/github"
 	"github.com/sashabaranov/go-openai"
+	"golang.org/x/exp/maps"
+	"gopkg.in/yaml.v3"
 )
 
 type repoAddr struct {
-	install, user, repo string
+	InstallID, User, Repo string
 }
 
 type Webhook struct {
@@ -68,15 +71,59 @@ func filterIssues(slice []*github.Issue, f func(*github.Issue) bool) []*github.I
 }
 
 type InferRequest struct {
-	InstallID string `json:"install_id"`
-	User      string `json:"user"`
-	Repo      string `json:"repo"`
-	Issue     int    `json:"issue"`
+	InstallID, User, Repo string
+	Issue                 int `json:"issue"`
 }
 
 type InferResponse struct {
-	SetLabels  []string `json:"set_labels,omitempty"`
-	TokensUsed int      `json:"tokens_used,omitempty"`
+	SetLabels      []string `json:"set_labels,omitempty"`
+	TokensUsed     int      `json:"tokens_used,omitempty"`
+	DisabledLabels []string `json:"disabled_labels,omitempty"`
+}
+
+type repoConfig struct {
+	Exclude []regexp.Regexp `json:"exclude"`
+}
+
+func (c *repoConfig) checkLabel(label string) bool {
+	for _, re := range c.Exclude {
+		if re.MatchString(label) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Webhook) getRepoConfig(ctx context.Context, client *github.Client,
+	owner, repo string,
+) (*repoConfig, error) {
+	fileContent, _, _, err := client.Repositories.GetContents(
+		ctx,
+		owner,
+		repo,
+		".github/labeler.yml",
+		&github.RepositoryContentGetOptions{},
+	)
+	if err != nil {
+		var githubErr *github.ErrorResponse
+		if errors.As(err, &githubErr) && githubErr.Response.StatusCode == http.StatusNotFound {
+			return &repoConfig{}, nil
+		}
+		return nil, fmt.Errorf("get contents: %w", err)
+	}
+
+	content, err := fileContent.GetContent()
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal content: %w", err)
+	}
+
+	var config repoConfig
+	err = yaml.Unmarshal(
+		[]byte(content),
+		&config,
+	)
+
+	return &config, err
 }
 
 func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse, error) {
@@ -87,10 +134,15 @@ func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 
 	githubClient := github.NewClient(instConfig.Client(ctx))
 
+	config, err := s.getRepoConfig(ctx, githubClient, req.User, req.Repo)
+	if err != nil {
+		return nil, fmt.Errorf("get repo config: %w", err)
+	}
+
 	lastIssues, err := s.recentIssuesCache.Do(repoAddr{
-		install: req.InstallID,
-		user:    req.User,
-		repo:    req.Repo,
+		InstallID: req.InstallID,
+		User:      req.User,
+		Repo:      req.Repo,
 	}, func() ([]*github.Issue, error) {
 		return ghapi.Page(
 			ctx,
@@ -116,9 +168,9 @@ func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 	}
 
 	labels, err := s.repoLabelsCache.Do(repoAddr{
-		install: req.InstallID,
-		user:    req.User,
-		repo:    req.Repo,
+		InstallID: req.InstallID,
+		User:      req.User,
+		Repo:      req.Repo,
 	}, func() ([]*github.Label, error) {
 		return ghapi.Page(
 			ctx,
@@ -209,6 +261,9 @@ retryAI:
 		if strings.Contains(label.GetDescription(), magicDisableString) {
 			disabledLabels[label.GetName()] = struct{}{}
 		}
+		if !config.checkLabel(label.GetName()) {
+			disabledLabels[label.GetName()] = struct{}{}
+		}
 	}
 
 	// Remove any labels that are disabled.
@@ -221,8 +276,9 @@ retryAI:
 	}
 
 	return &InferResponse{
-		SetLabels:  newLabels,
-		TokensUsed: resp.Usage.TotalTokens,
+		SetLabels:      newLabels,
+		TokensUsed:     resp.Usage.TotalTokens,
+		DisabledLabels: maps.Keys(disabledLabels),
 	}, nil
 }
 

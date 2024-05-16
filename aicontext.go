@@ -73,6 +73,8 @@ func countTokens(msgs ...openai.ChatCompletionMessage) int {
 	return tokens
 }
 
+// magicDisableString is deprecated as the original recommendation
+// for disasbling additive labels.
 const magicDisableString = "Only humans may set this"
 
 // Request generates the messages to be used in the GPT-4 context.

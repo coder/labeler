@@ -168,6 +168,9 @@ func main() {
 			}
 
 			go func() {
+				if root.indexInterval == 0 {
+					return
+				}
 				ret := retry.New(time.Second, time.Minute)
 
 			retry:
