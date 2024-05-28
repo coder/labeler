@@ -3,7 +3,6 @@ package labeler
 import (
 	"context"
 	"log/slog"
-	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/go-github/v59/github"
 	"github.com/sashabaranov/go-openai"
+	"github.com/viterin/vek"
 	"google.golang.org/api/iterator"
 )
 
@@ -38,8 +38,9 @@ func (s *Search) getCachedRepoIssues(ctx context.Context,
 	repo string,
 ) ([]*BqIssue, error) {
 	query := s.BigQuery.Query(`
-		SELECT * FROM ` + "ghindex.`" + issuesTableName + "`" + ` WHERE repo = @repo
-		AND user = @owner AND state = 'open' AND pull_request = false
+		SELECT * FROM ` + "ghindex.latest_issues" + ` WHERE repo = @repo
+		AND user = @owner AND state = 'open' AND pull_request = false ORDER BY
+		number DESC
 	`)
 
 	query.Parameters = []bigquery.QueryParameter{
@@ -74,42 +75,40 @@ func (s *Search) getCachedRepoIssues(ctx context.Context,
 	return issues, nil
 }
 
-func cosineSimilarity(a, b []float64) float64 {
-	var dot float64
-	var magA float64
-	var magB float64
-	for i := range a {
-		dot += a[i] * b[i]
-		magA += a[i] * a[i]
-		magB += b[i] * b[i]
-	}
-
-	magA = math.Sqrt(magA)
-	magB = math.Sqrt(magB)
-
-	return dot / (magA * magB)
-}
-
 type bqIssueWithSimilarity struct {
-	*BqIssue
+	BqIssue
 	Similarity float64
 }
 
 // TODO: I can parallelize this search or use coder/hnsw in the future.
-func bruteSearch(issues []*BqIssue, searchQuery []float64) []*bqIssueWithSimilarity {
-	var r1 []*bqIssueWithSimilarity
-	for _, issue := range issues {
-		similarity := cosineSimilarity(issue.Embedding, searchQuery)
-		r1 = append(r1, &bqIssueWithSimilarity{
-			BqIssue:    issue,
+func bruteSearch(issues []*BqIssue, searchQuery []float64) []bqIssueWithSimilarity {
+	// If the number of issues is too large, split the search in half and
+	// search each half in parallel.
+	// if len(issues) > 32 {
+	// 	left, right := issues[:len(issues)/2], issues[len(issues)/2:]
+	// 	ch := make(chan []bqIssueWithSimilarity, 2)
+	// 	go func() {
+	// 		ch <- bruteSearch(left, searchQuery)
+	// 	}()
+	// 	go func() {
+	// 		ch <- bruteSearch(right, searchQuery)
+	// 	}()
+	// 	r1, r2 := <-ch, <-ch
+	// 	return append(r1, r2...)
+	// }
+
+	var result []bqIssueWithSimilarity
+	for i, issue := range issues {
+		similarity := vek.CosineSimilarity(issue.Embedding, searchQuery)
+		result = append(result, bqIssueWithSimilarity{
+			BqIssue:    *issues[i],
 			Similarity: similarity,
 		})
 	}
-	sort.Slice(r1, func(i, j int) bool {
-		return r1[i].Similarity > r1[j].Similarity
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Similarity > result[j].Similarity
 	})
-
-	return r1
+	return result
 }
 
 func (s *Search) search(w http.ResponseWriter, r *http.Request) *httpjson.Response {
@@ -195,8 +194,9 @@ func (s *Search) search(w http.ResponseWriter, r *http.Request) *httpjson.Respon
 	searchEmbedding, err := s.OpenAI.CreateEmbeddings(
 		ctx,
 		&openai.EmbeddingRequestStrings{
-			Input: []string{searchQuery},
-			Model: openai.SmallEmbedding3,
+			Input:      []string{searchQuery},
+			Model:      openai.SmallEmbedding3,
+			Dimensions: embeddingDimensions,
 		},
 	)
 	if err != nil {
@@ -215,6 +215,11 @@ func (s *Search) search(w http.ResponseWriter, r *http.Request) *httpjson.Respon
 	const maxResults = 100
 	if len(similarIssues) > maxResults {
 		similarIssues = similarIssues[:maxResults]
+	}
+
+	// Strip embeddings from response.
+	for i := range similarIssues {
+		similarIssues[i].Embedding = nil
 	}
 
 	return &httpjson.Response{

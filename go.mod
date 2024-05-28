@@ -23,6 +23,7 @@ require (
 	cloud.google.com/go/iam v1.1.7 // indirect
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
+	github.com/chewxy/math32 v1.10.1 // indirect
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -37,6 +38,8 @@ require (
 	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/viterin/partial v1.1.0 // indirect
+	github.com/viterin/vek v0.4.2 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.51.0 // indirect
