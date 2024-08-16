@@ -73,6 +73,9 @@ func filterIssues(slice []*github.Issue, f func(*github.Issue) bool) []*github.I
 type InferRequest struct {
 	InstallID, User, Repo string
 	Issue                 int `json:"issue"`
+	// TestMode determines whether the target issue's existing labels
+	// are stripped before inference.
+	TestMode bool `json:"test_mode"`
 }
 
 type InferResponse struct {
@@ -202,6 +205,10 @@ func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 		jTime := lastIssues[j].GetCreatedAt().Time
 		return iTime.Before(jTime)
 	})
+
+	if req.TestMode {
+		targetIssue.Labels = nil
+	}
 
 	aiContext := &aiContext{
 		allLabels:   labels,

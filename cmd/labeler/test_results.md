@@ -1,34 +1,17 @@
-@ammario collected these results on 2024-03-11 by running `labeler test` on
+@ammario collected these results on 2024-08-15 by running `labeler test` on
 `coder/coder`.
 
-Note:
-* the performance is quite bad partially because of an inconsistent
-use of labels in coder/coder
-* the context window of gpt-3.5-turbo is 16k, which is partially the cause
-of inferior performance
 
-### gpt-3.5-turbo
-
-```
-Total issues:      98
-False adds:        92 93.88%
-Top false adds:    [{site 10} {chore 10} {feature 10} {bug 8} {customer-requested 6}]
-False removes:     74 75.51%
-Top false removes: [{site 18} {feature 7} {s3 6} {customer-requested 5} {s4 4}]
-Hits:              100 102.04%
-Top hit labels:    [{bug 29} {feature 21} {chore 14} {site 11} {flake 7}]
-Tokens used:       1164078
-```
-
-## gpt-4-turbo-preview
+### gpt-4om
 
 ```
 Total issues:      100
-False adds:        53 53.00%
-Top false adds:    [{bug 7} {site 7} {s3 6} {docs 4} {feature 4}]
-False removes:     68 68.00%
-Top false removes: [{chore 8} {bug 8} {s3 5} {feature 5} {api 4}]
-Hits:              106 106.00%
-Top hit labels:    [{site 25} {bug 24} {feature 23} {chore 8} {flake 7}]
-Tokens used:       2296845
+False adds:        15 15.00%
+Top false adds:    [{chore 2} {bug 2} {feature 2} {s3 2} {cli 1} {enterprise 1} {customer-reported 1} {regression 1} {need-backend 1} {waiting-for-info 1} {need-help 1}]
+False removes:     37 37.00%
+Top false removes: [{site 14} {s2 3} {design 3} {feature 3} {enterprise 3} {customer-requested 3} {cli 2} {roadmap-maybe 1} {security 1} {chore 1} {s1 1} {roadmap 1} {s3 1}]
+Hits:              250 250.00%
+Top hit labels:    [{site 39} {bug 39} {feature 36} {enterprise 26} {design 26} {s3 24} {s4 8} {flake 8} {waiting-for-info 7} {good first issue 5} {customer-requested 4} {cli 4} {chore 4} {security 4} {need-backend 4} {observability 3} {regression 3} {api 2} {release/experimental 1} {customer-reported 1}]
+Tokens used:       2029452
 ```
+

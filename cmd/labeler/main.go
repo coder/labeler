@@ -85,6 +85,10 @@ func (r *rootCmd) appConfig() (*app.Config, error) {
 func (r *rootCmd) ai(ctx context.Context) (*openai.Client, error) {
 	openAIKey := strings.TrimSpace(r.openAIKey)
 
+	if openAIKey == "" {
+		return nil, fmt.Errorf("openai-key is required")
+	}
+
 	oai := openai.NewClient(openAIKey)
 
 	// Validate the OpenAI API key.
@@ -208,7 +212,7 @@ func main() {
 			},
 			{
 				Flag:        "openai-model",
-				Default:     openai.GPT4TurboPreview,
+				Default:     openai.GPT4oMini,
 				Description: "OpenAI model to use.",
 				Value:       serpent.StringOf(&root.openAIModel),
 			},

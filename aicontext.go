@@ -1,15 +1,11 @@
 package labeler
 
 import (
-	"encoding/json"
 	"fmt"
-	"math/rand"
 	"strings"
 
 	"github.com/ammario/prefixsuffix"
-	"github.com/coder/labeler/httpjson"
 	"github.com/google/go-github/v59/github"
-	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
 	"github.com/sashabaranov/go-openai/jsonschema"
 	"github.com/tiktoken-go/tokenizer"
@@ -32,7 +28,13 @@ func (c *aiContext) labelNames() []string {
 
 func issueToText(issue *github.Issue) string {
 	var sb strings.Builder
+	fmt.Fprintf(&sb, "=== ISSUE %v ===\n", issue.GetNumber())
 	fmt.Fprintf(&sb, "author: %s (%s)\n", issue.GetUser().GetLogin(), issue.GetAuthorAssociation())
+	var labels []string
+	for _, label := range issue.Labels {
+		labels = append(labels, label.GetName())
+	}
+	fmt.Fprintf(&sb, "labels: %s\n", labels)
 	sb.WriteString("title: " + issue.GetTitle())
 	sb.WriteString("\n")
 
@@ -42,17 +44,11 @@ func issueToText(issue *github.Issue) string {
 	}
 	saver.Write([]byte(issue.GetBody()))
 	sb.Write(saver.Bytes())
+	fmt.Fprintf(&sb, "\n=== END ISSUE %v ===\n", issue.GetNumber())
 
 	return sb.String()
 }
 
-func mustJSON(v interface{}) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
-}
 
 func countTokens(msgs ...openai.ChatCompletionMessage) int {
 	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
@@ -117,81 +113,54 @@ func (c *aiContext) Request(
 		},
 	}
 
-	// See https://gist.github.com/ammario/6321e803f78f21e3ae87ab4f9e26a4e7
-	// for slight performance improvement.
-	rand.Shuffle(len(c.lastIssues), func(i, j int) {
-		c.lastIssues[i], c.lastIssues[j] = c.lastIssues[j], c.lastIssues[i]
-	})
-
 constructMsgs:
 	var msgs []openai.ChatCompletionMessage
 
+	// System message with instructions
 	msgs = append(msgs, openai.ChatCompletionMessage{
 		Role: "system",
-		Content: `You are a bot that helps labels issues on GitHub using the "setLabel"
+		Content: `You are a bot that helps label issues on GitHub using the "setLabels"
 		function. Do not apply labels that are meant for Pull Requests. Avoid applying labels when
-		the label description says something like "` + magicDisableString + `". The labels available are:
-		` + labelsDescription.String(),
+		the label description says something like "` + magicDisableString + `".
+		Only apply labels when absolutely certain they are correct. An accidental
+		omission of a label is better than an accidental addition.
+		Multiple labels can be applied to a single issue if appropriate.`,
 	})
 
+	// System message with label descriptions
+	msgs = append(msgs,
+		openai.ChatCompletionMessage{
+			Role:    "system",
+			Content: "The labels available are: \n" + labelsDescription.String(),
+		},
+	)
+
+	// Create a single blob of past issues
+	var pastIssuesBlob strings.Builder
+	pastIssuesBlob.WriteString("Here are some examples of past issues and their labels:\n\n")
+
 	for _, issue := range c.lastIssues {
-		msgs = append(msgs, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: issueToText(issue),
-		})
-
-		var labelNames []string
-		for _, label := range issue.Labels {
-			labelNames = append(labelNames, label.GetName())
-		}
-
-		tcID := uuid.NewString()
-		msgs = append(msgs, openai.ChatCompletionMessage{
-			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{
-				{
-					Type: openai.ToolTypeFunction,
-					ID:   tcID,
-					Function: openai.FunctionCall{
-						Name: labelFuncName,
-						Arguments: mustJSON(httpjson.M{
-							"labels": labelNames,
-						}),
-					},
-				},
-			},
-		})
-
-		msgs = append(msgs, openai.ChatCompletionMessage{
-			Role:       openai.ChatMessageRoleTool,
-			Content:    "OK",
-			ToolCallID: tcID,
-		})
+		pastIssuesBlob.WriteString(issueToText(issue))
+		pastIssuesBlob.WriteString("\n\n")
 	}
 
-	targetIssueMsg := openai.ChatCompletionMessage{
+	// Add past issues blob as a system message
+	msgs = append(msgs, openai.ChatCompletionMessage{
+		Role:    "system",
+		Content: pastIssuesBlob.String(),
+	})
+
+	// Add the target issue
+	msgs = append(msgs, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
 		Content: issueToText(c.targetIssue),
-	}
+	})
 
-	// Finally, add target issue.
-	msgs = append(msgs, targetIssueMsg)
+	modelTokenLimit := 128000
 
-	var modelTokenLimit int
-
-	switch model {
-	case openai.GPT3Dot5Turbo, openai.GPT3Dot5Turbo16K:
-		modelTokenLimit = 16385
-	case openai.GPT4TurboPreview:
-		modelTokenLimit = 128000
-	default:
-		// Assume a big context window, errors are better than
-		// bad performance.
-		modelTokenLimit = 128000
-	}
-
-	// Prune messages if we are over the token limit.
+	// Check token limit and adjust if necessary
 	if countTokens(msgs...) > modelTokenLimit && len(c.lastIssues) > 1 {
+		// Reduce the number of past issues
 		c.lastIssues = c.lastIssues[:len(c.lastIssues)/2]
 		goto constructMsgs
 	}
