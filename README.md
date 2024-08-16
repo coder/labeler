@@ -50,15 +50,10 @@ sequenceDiagram
     Labeler ->> GitHub: Add labels to issue
 ```
 
-The labeler uses a GPT-4 completion with the past 100 opened issues instead of
+The labeler uses a GPT-4o completion with the past 100 opened issues instead of
 a more complex vector DB / embedding system. This is because of the proven
 accuracy of @cdr-bot on coder/coder and the fact that the completion approach lets us remove
 the need for a DB.
-
-On the other hand, completions are pretty expensive, so
-costs may approach ~10c per opened issue on a popular repository. If the project
-reaches a scale where that becomes an issue, we can switch to an embedding system, GPT-3.5,
-or accept an OpenAI key.
 
 ### Context construction
 
