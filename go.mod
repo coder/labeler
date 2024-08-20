@@ -92,6 +92,6 @@ require (
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/go-playground/webhooks/v6 v6.3.0
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/sashabaranov/go-openai v1.28.1
+	github.com/sashabaranov/go-openai v1.28.2
 	github.com/tiktoken-go/tokenizer v0.1.0
 )

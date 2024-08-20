@@ -232,36 +232,23 @@ retryAI:
 		}
 		return nil, fmt.Errorf("create chat completion: %w", err)
 	}
-
 	if len(resp.Choices) != 1 {
 		return nil, fmt.Errorf("expected one choice")
 	}
 
 	choice := resp.Choices[0]
 
-	if len(choice.Message.ToolCalls) != 1 {
-		return nil, fmt.Errorf("expected one tool call, got %d", len(choice.Message.ToolCalls))
-	}
-
-	toolCall := choice.Message.ToolCalls[0]
+	content := choice.Message.Content
 	var setLabels struct {
-		Labels []string `json:"labels"`
+		Reasoning string   `json:"reasoning"`
+		Labels    []string `json:"labels"`
 	}
-	err = json.Unmarshal([]byte(toolCall.Function.Arguments), &setLabels)
-	if err != nil {
-		var setLabelsStr struct {
-			Labels string `json:"labels"`
-		}
 
-		// Sometimes the labels are returned as a string.
-		err2 := json.Unmarshal([]byte(toolCall.Function.Arguments), &setLabelsStr)
-		if err2 != nil {
-			return nil, errors.Join(
-				fmt.Errorf("unmarshal setLabels: %w, toolCall: %+v", err, toolCall),
-				err2,
-			)
-		}
+	err = json.Unmarshal([]byte(content), &setLabels)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal setLabels: %w, content: %q", err, content)
 	}
+	s.Log.Info("set labels", "labels", setLabels.Labels, "reasoning", setLabels.Reasoning)
 
 	disabledLabels := make(map[string]struct{})
 	for _, label := range labels {

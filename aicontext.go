@@ -18,14 +18,6 @@ type aiContext struct {
 	targetIssue *github.Issue
 }
 
-func (c *aiContext) labelNames() []string {
-	var labels []string
-	for _, label := range c.allLabels {
-		labels = append(labels, label.GetName())
-	}
-	return labels
-}
-
 func issueToText(issue *github.Issue) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "=== ISSUE %v ===\n", issue.GetNumber())
@@ -48,7 +40,6 @@ func issueToText(issue *github.Issue) string {
 
 	return sb.String()
 }
-
 
 func countTokens(msgs ...openai.ChatCompletionMessage) int {
 	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
@@ -92,23 +83,27 @@ func (c *aiContext) Request(
 		LogProbs: true,
 		// Want high determinism.
 		Temperature: 0,
-		Tools: []openai.Tool{
-			{
-				Type: openai.ToolTypeFunction,
-				Function: &openai.FunctionDefinition{
-					Name:        labelFuncName,
-					Description: `Label the GitHub issue with the given labels.`,
-					Parameters: jsonschema.Definition{
-						Type: jsonschema.Object,
-						Properties: map[string]jsonschema.Definition{
-							"labels": {
-								Type:  jsonschema.Array,
-								Items: &jsonschema.Definition{Type: jsonschema.String},
-								Enum:  c.labelNames(),
-							},
+		ResponseFormat: &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+			JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:        labelFuncName,
+				Description: `Label the GitHub issue with the given labels.`,
+				Schema: jsonschema.Definition{
+					Type: jsonschema.Object,
+					Properties: map[string]jsonschema.Definition{
+						"reasoning": {
+							Description: "The reasoning for the labels. Maximum of one sentence per label.",
+							Type:        jsonschema.String,
+						},
+						"labels": {
+							Type:  jsonschema.Array,
+							Items: &jsonschema.Definition{Type: jsonschema.String},
 						},
 					},
+					Required:             []string{"reasoning", "labels"},
+					AdditionalProperties: false,
 				},
+				Strict: true,
 			},
 		},
 	}
