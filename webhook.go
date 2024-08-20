@@ -240,7 +240,7 @@ retryAI:
 	choice := resp.Choices[0]
 
 	if len(choice.Message.ToolCalls) != 1 {
-		return nil, fmt.Errorf("expected one tool call")
+		return nil, fmt.Errorf("expected one tool call, got %d", len(choice.Message.ToolCalls))
 	}
 
 	toolCall := choice.Message.ToolCalls[0]
@@ -376,7 +376,7 @@ func (s *Webhook) webhook(w http.ResponseWriter, r *http.Request) *httpjson.Resp
 		Issue:     int(payload.Issue.Number),
 	})
 	if err != nil {
-		return s.serverError(err)
+		return s.serverError(fmt.Errorf("infer: %w, issue: %+v", err, payload.Issue.URL))
 	}
 
 	if len(resp.SetLabels) == 0 {
