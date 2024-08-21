@@ -1,9 +1,8 @@
 .ONESHELL:
 
-
 PROJECT := coder-labeler
-DOCKER_TAG := us-central1-docker.pkg.dev/$(PROJECT)/labeler/labeler
-
+COMMIT_SHA := $(shell git rev-parse --short HEAD)
+DOCKER_TAG := us-central1-docker.pkg.dev/$(PROJECT)/labeler/labeler:$(COMMIT_SHA)
 
 .PHONY: build push deploy
 
