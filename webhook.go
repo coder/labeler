@@ -129,6 +129,16 @@ func (s *Webhook) getRepoConfig(ctx context.Context, client *github.Client,
 	return &config, err
 }
 
+func filterSlice[T any](slice []T, f func(T) bool) []T {
+	var result []T
+	for _, item := range slice {
+		if f(item) {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse, error) {
 	instConfig, err := s.AppConfig.InstallationConfig(req.InstallID)
 	if err != nil {
@@ -170,7 +180,7 @@ func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 		return nil, fmt.Errorf("list issues: %w", err)
 	}
 
-	labels, err := s.repoLabelsCache.Do(repoAddr{
+	repoLabels, err := s.repoLabelsCache.Do(repoAddr{
 		InstallID: req.InstallID,
 		User:      req.User,
 		Repo:      req.Repo,
@@ -211,7 +221,7 @@ func (s *Webhook) Infer(ctx context.Context, req *InferRequest) (*InferResponse,
 	}
 
 	aiContext := &aiContext{
-		allLabels:   labels,
+		allLabels:   repoLabels,
 		lastIssues:  lastIssues,
 		targetIssue: targetIssue,
 	}
@@ -251,7 +261,7 @@ retryAI:
 	s.Log.Info("set labels", "labels", setLabels.Labels, "reasoning", setLabels.Reasoning)
 
 	disabledLabels := make(map[string]struct{})
-	for _, label := range labels {
+	for _, label := range repoLabels {
 		if strings.Contains(label.GetDescription(), magicDisableString) {
 			disabledLabels[label.GetName()] = struct{}{}
 		}
@@ -261,13 +271,32 @@ retryAI:
 	}
 
 	// Remove any labels that are disabled.
-	var newLabels []string
-	for _, label := range setLabels.Labels {
-		if _, ok := disabledLabels[label]; ok {
-			continue
-		}
-		newLabels = append(newLabels, label)
+	newLabels := filterSlice(setLabels.Labels, func(label string) bool {
+		_, ok := disabledLabels[label]
+		return !ok
+	})
+
+	repoLabelsMap := make(map[string]struct{})
+	for _, label := range repoLabels {
+		repoLabelsMap[label.GetName()] = struct{}{}
 	}
+
+	log := s.Log.With(
+		"repo", req.User+"/"+req.Repo,
+		"issue", req.Issue,
+	)
+	// Remove any labels that are not defined by the repo.
+	// Sometimes the model returns labels in a
+	// space delimited string. For example, "bug critical" instead of
+	// ["bug", "critical"]. It's better to be safe and not accidentally
+	// create new labels.
+	newLabels = filterSlice(newLabels, func(label string) bool {
+		_, ok := repoLabelsMap[label]
+		if !ok {
+			log.Warn("label not found", "label", label)
+		}
+		return ok
+	})
 
 	return &InferResponse{
 		SetLabels:      newLabels,
