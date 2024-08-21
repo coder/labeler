@@ -5,6 +5,12 @@ on:
     branches:
       - main
 
+# This ensures only one deployment job runs at a time
+# If a second deployment is triggered, it will cancel the first one
+concurrency:
+  group: deploy-to-cloud-run
+  cancel-in-progress: true
+
 env:
   PROJECT_ID: coder-labeler
 
@@ -19,13 +25,16 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.21"
+          go-version: "1.21" # Adjust this to your Go version
+
+      - name: Google Auth
+        id: auth
+        uses: "google-github-actions/auth@v1"
+        with:
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: coder-labeler
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
+        uses: "google-github-actions/setup-gcloud@v1"
 
       - name: Configure Docker
         run: gcloud auth configure-docker us-central1-docker.pkg.dev
