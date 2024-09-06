@@ -1,8 +1,12 @@
 # labeler
 
 `labeler` is a GitHub app that automatically labels newly created issues for you
-based on your past labelling decisions. You can install it on your repo
-[**here**](https://github.com/marketplace/coder-labeler).
+based on your past labelling decisions.
+
+
+> [!IMPORTANT]
+> You can install coder-labeler on your repo
+> [**here**](https://github.com/marketplace/coder-labeler).
 
 ![img](./img/example-label.png)
 
